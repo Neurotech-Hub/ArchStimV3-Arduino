@@ -5,9 +5,11 @@
 #include <SD.h>
 #include <SPI.h>
 #include <Wire.h>
-#include <ADS1118.h>
-#include <AD57X4R.h>
+#include "ADS1118.h"
+#include "AD57X4R.h"
+#include "Waveforms/Waveform.h"  // Base waveform class
 
+// Define pins and constants as needed
 #define USB_SENSE 1
 #define USER_IN 2
 #define LED_B 5
@@ -44,7 +46,7 @@ public:
     void initADC();
     void initDAC();
 
-    // Waveform and pulse generation methods
+    // Waveform and pulse generation methods (called by specific waveform classes)
     void square(float negVal, float posVal, float frequency);
     void pulse(float ampArray[], int timeArray[], int arrSize);
     void randPulse(float ampArray[], int arrSize);
@@ -56,10 +58,23 @@ public:
     float zCheck();
     void printCurrent();
 
+    // Waveform management
+    void setActiveWaveform(Waveform* waveform);  // Sets the current active waveform
+    void runWaveform();                          // Executes the active waveform if set
+
+    // getters and setters
+    void activateIsolated();
+    void deactivateIsolated();
+    void enableStim();
+    void disableStim();
+    void beep(int frequency, int duration);
+
 private:
     ADS1118 adc;
     AD57X4R dac;
     float Z;  // Head impedance or similar variable, initialized in functions as needed
+
+    Waveform* activeWaveform;  // Pointer to currently active waveform
 };
 
 #endif

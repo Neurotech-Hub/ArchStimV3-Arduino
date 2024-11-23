@@ -1,43 +1,32 @@
 #include "ArchStimV3.h"
-#include "Waveforms/SquareWave.h"
+#include "CommandInterpreter.h"
 
 ArchStimV3 stimDevice;
+CommandInterpreter cmdInterpreter(stimDevice);
 
-void setup() {
+void setup()
+{
   Serial.begin(9600);
-  stimDevice.begin();  // nothing for stimDevice before this
+  stimDevice.begin();
   stimDevice.enableStim();
 
-  delay(2000);  // Serial connect
+  delay(2000); // Serial connect
   stimDevice.beep(1000, 200);
   Serial.println("Hello, ARCH Stim.");
+  cmdInterpreter.printHelp();
 }
 
-void loop() {
-  // Check for Serial input to control waveforms
-  if (Serial.available()) {
+void loop()
+{
+  if (Serial.available())
+  {
     String command = Serial.readStringUntil('\n');
+    command.trim();
 
-    Serial.println(command);
-
-    if (command == "SQUARE") {
-      // Define square wave parameters
-      float negVal = -2.0;     // Negative voltage
-      float posVal = 2.0;      // Positive voltage
-      float frequency = 10.0;  // Frequency in Hz
-
-      // Create a new SquareWave instance with parameters and set as active
-      Serial.println("Starting SquareWave...");
-      stimDevice.setActiveWaveform(new SquareWave(stimDevice, negVal, posVal, frequency));
-    }
-    // Add other waveforms as needed
-    else if (command == "STOP") {
-      // Stop the active waveform
-      Serial.println("Stopping waveform.");
-      stimDevice.setActiveWaveform(nullptr);
+    if (!cmdInterpreter.processCommand(command))
+    {
+      Serial.println("Command failed. Type HELP for usage.");
     }
   }
-
-  // Run the active waveform if one is set
   stimDevice.runWaveform();
 }

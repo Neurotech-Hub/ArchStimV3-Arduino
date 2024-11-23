@@ -1,0 +1,311 @@
+#ifndef COMMAND_INTERPRETER_H
+#define COMMAND_INTERPRETER_H
+
+#include "ArchStimV3.h"
+#include "Waveforms/SquareWave.h"
+#include "Waveforms/PulseWave.h"
+#include "Waveforms/RandomPulseWave.h"
+
+class CommandInterpreter
+{
+public:
+    CommandInterpreter(ArchStimV3 &device) : device(device) {}
+
+    void printHelp()
+    {
+        Serial.println("\nARCH Stim Commands:");
+        Serial.println("System:");
+        Serial.println("  EN            Enable stimulation");
+        Serial.println("  DIS           Disable stimulation");
+        Serial.println("  STP           Stop waveform");
+        Serial.println("  BEP:f,d       Beep (freq,duration)");
+        Serial.println("  ZCK           Check impedance");
+        Serial.println("  HELP          Show this help");
+        Serial.println("\nWaveforms:");
+        Serial.println("  SQR:n,p,f     Square (negV,posV,freq)");
+        Serial.println("  PLS:a,b,c;t   Pulse (ampArray;timeArray)");
+        Serial.println("  RND:a,b,c     Random (ampArray)");
+        Serial.println("\nExamples:");
+        Serial.println("  SQR:-2.0,2.0,10    // 10Hz square wave, ±2V");
+        Serial.println("  PLS:0,2,-2;100,0   // Pulse train, fixed 100ms");
+        Serial.println("  PLS:0,2,-2;25,50   // Pulse train, varying times");
+        Serial.println("  RND:2,-2,1.5,-1.5  // Random pulses");
+        Serial.println("  BEP:1000,200       // 1kHz beep, 200ms\n");
+    }
+
+    bool processCommand(const String &command)
+    {
+        if (command == "HELP")
+        {
+            printHelp();
+            return true;
+        }
+
+        // Validate command format
+        if (command.length() == 0)
+        {
+            Serial.println("ERR: Empty command");
+            return false;
+        }
+
+        // Split command into type and parameters
+        int colonIndex = command.indexOf(':');
+        String type = (colonIndex == -1) ? command : command.substring(0, colonIndex);
+        String params = (colonIndex == -1) ? "" : command.substring(colonIndex + 1);
+
+        // System commands
+        if (type == "STP")
+        {
+            device.setActiveWaveform(nullptr);
+            return true;
+        }
+        else if (type == "EN")
+        {
+            device.enableStim();
+            return true;
+        }
+        else if (type == "DIS")
+        {
+            device.disableStim();
+            return true;
+        }
+        else if (type == "BEP")
+            return processBEP(params);
+        else if (type == "ZCK")
+        {
+            float z = device.zCheck();
+            Serial.println(z);
+            return true;
+        }
+        // Waveform commands
+        else if (type == "SQR")
+            return processSQR(params);
+        else if (type == "PLS")
+            return processPLS(params);
+        else if (type == "RND")
+            return processRND(params);
+        else
+        {
+            Serial.println("ERR: Unknown command type");
+            return false;
+        }
+    }
+
+private:
+    ArchStimV3 &device;
+    static const int MAX_ARRAY_SIZE = 10;
+    static const float MAX_VOLTAGE = 5.0; // Maximum allowed voltage
+    static const float MAX_FREQ = 1000.0; // Maximum frequency in Hz
+
+    bool validateVoltage(float voltage)
+    {
+        if (abs(voltage) > MAX_VOLTAGE)
+        {
+            Serial.println("ERR: Voltage exceeds ±5V limit");
+            return false;
+        }
+        return true;
+    }
+
+    bool validateFrequency(float freq)
+    {
+        if (freq <= 0 || freq > MAX_FREQ)
+        {
+            Serial.println("ERR: Invalid frequency");
+            return false;
+        }
+        return true;
+    }
+
+    bool validateDuration(int duration)
+    {
+        if (duration < 1)
+        {
+            Serial.println("ERR: Duration must be positive");
+            return false;
+        }
+        return true;
+    }
+
+    bool validateArraySize(int size)
+    {
+        if (size <= 0 || size > MAX_ARRAY_SIZE)
+        {
+            Serial.println("ERR: Invalid array size");
+            return false;
+        }
+        return true;
+    }
+
+    bool processBEP(const String &params)
+    {
+        int values[2];
+        if (parseIntArray(params, values, 2) != 2)
+        {
+            Serial.println("ERR: BEP requires frequency,duration");
+            return false;
+        }
+        if (values[0] <= 0 || values[1] <= 0)
+        {
+            Serial.println("ERR: Invalid beep parameters");
+            return false;
+        }
+        device.beep(values[0], values[1]);
+        return true;
+    }
+
+    bool processSQR(const String &params)
+    {
+        float values[3];
+        if (parseFloatArray(params, values, 3) != 3)
+        {
+            Serial.println("ERR: SQR requires negVal,posVal,frequency");
+            return false;
+        }
+
+        if (!validateVoltage(values[0]) || !validateVoltage(values[1]) ||
+            !validateFrequency(values[2]))
+        {
+            return false;
+        }
+
+        device.setActiveWaveform(
+            new SquareWave(device, values[0], values[1], values[2]));
+        return true;
+    }
+
+    bool processPLS(const String &params)
+    {
+        int splitIndex = params.indexOf(';');
+        if (splitIndex == -1)
+        {
+            Serial.println("ERR: PLS requires ampArray;timeArray format");
+            return false;
+        }
+
+        String ampStr = params.substring(0, splitIndex);
+        String timeStr = params.substring(splitIndex + 1);
+
+        float ampArray[MAX_ARRAY_SIZE];
+        int timeArray[MAX_ARRAY_SIZE];
+
+        int ampCount = parseFloatArray(ampStr, ampArray, MAX_ARRAY_SIZE);
+        if (!validateArraySize(ampCount))
+            return false;
+
+        int timeCount = parseIntArray(timeStr, timeArray, MAX_ARRAY_SIZE);
+        if (timeCount != 1 && timeCount != ampCount)
+        {
+            Serial.println("ERR: Invalid time array size");
+            return false;
+        }
+
+        // Validate all voltages
+        for (int i = 0; i < ampCount; i++)
+        {
+            if (!validateVoltage(ampArray[i]))
+                return false;
+        }
+
+        // Validate all durations
+        for (int i = 0; i < timeCount; i++)
+        {
+            if (!validateDuration(timeArray[i]))
+                return false;
+        }
+
+        device.setActiveWaveform(
+            new PulseWave(device, ampArray, timeArray, ampCount));
+        return true;
+    }
+
+    bool processRND(const String &params)
+    {
+        float ampArray[MAX_ARRAY_SIZE];
+        int count = parseFloatArray(params, ampArray, MAX_ARRAY_SIZE);
+
+        if (!validateArraySize(count))
+            return false;
+
+        // Validate all voltages
+        for (int i = 0; i < count; i++)
+        {
+            if (!validateVoltage(ampArray[i]))
+                return false;
+        }
+
+        device.setActiveWaveform(
+            new RandomPulseWave(device, ampArray, count));
+        return true;
+    }
+
+    int parseFloatArray(const String &str, float *arr, int maxSize)
+    {
+        int count = 0;
+        int start = 0;
+        int comma;
+
+        while ((comma = str.indexOf(',', start)) != -1 && count < maxSize)
+        {
+            String numStr = str.substring(start, comma);
+            numStr.trim();
+            if (numStr.length() == 0)
+            {
+                Serial.println("ERR: Empty value in array");
+                return 0;
+            }
+            arr[count++] = numStr.toFloat();
+            start = comma + 1;
+        }
+
+        if (start < str.length() && count < maxSize)
+        {
+            String numStr = str.substring(start);
+            numStr.trim();
+            if (numStr.length() == 0)
+            {
+                Serial.println("ERR: Empty value in array");
+                return 0;
+            }
+            arr[count++] = numStr.toFloat();
+        }
+
+        return count;
+    }
+
+    int parseIntArray(const String &str, int *arr, int maxSize)
+    {
+        int count = 0;
+        int start = 0;
+        int comma;
+
+        while ((comma = str.indexOf(',', start)) != -1 && count < maxSize)
+        {
+            String numStr = str.substring(start, comma);
+            numStr.trim();
+            if (numStr.length() == 0)
+            {
+                Serial.println("ERR: Empty value in array");
+                return 0;
+            }
+            arr[count++] = numStr.toInt();
+            start = comma + 1;
+        }
+
+        if (start < str.length() && count < maxSize)
+        {
+            String numStr = str.substring(start);
+            numStr.trim();
+            if (numStr.length() == 0)
+            {
+                Serial.println("ERR: Empty value in array");
+                return 0;
+            }
+            arr[count++] = numStr.toInt();
+        }
+
+        return count;
+    }
+};
+
+#endif

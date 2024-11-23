@@ -5,6 +5,8 @@
 #include "Waveforms/SquareWave.h"
 #include "Waveforms/PulseWave.h"
 #include "Waveforms/RandomPulseWave.h"
+#include "Waveforms/SumOfSinesWave.h"
+#include "Waveforms/RampedSineWave.h"
 
 class CommandInterpreter
 {
@@ -25,6 +27,8 @@ public:
         Serial.println("  SQR:n,p,f     Square (negV,posV,freq)");
         Serial.println("  PLS:a,b,c;t   Pulse (ampArray;timeArray)");
         Serial.println("  RND:a,b,c     Random (ampArray)");
+        Serial.println("  SOS:w0,f0,w1,f1,d  Sum of sines (weights,freqs,duration)");
+        Serial.println("  RMP:f,d,w,F,s   Ramped sine (rampFreq,dur,weight,freq,step)");
         Serial.println("\nExamples:");
         Serial.println("  SQR:-2.0,2.0,10    // 10Hz square wave, ±2V");
         Serial.println("  PLS:0,2,-2;100,0   // Pulse train, fixed 100ms");
@@ -84,6 +88,10 @@ public:
             return processPLS(params);
         else if (type == "RND")
             return processRND(params);
+        else if (type == "SOS")
+            return processSOS(params);
+        else if (type == "RMP")
+            return processRMP(params);
         else
         {
             Serial.println("ERR: Unknown command type");
@@ -236,6 +244,70 @@ private:
 
         device.setActiveWaveform(
             new RandomPulseWave(device, ampArray, count));
+        return true;
+    }
+
+    bool processSOS(const String &params)
+    {
+        float values[5]; // weight0, freq0, weight1, freq1, duration
+        if (parseFloatArray(params, values, 5) != 5)
+        {
+            Serial.println("ERR: SOS requires weight0,freq0,weight1,freq1,duration");
+            return false;
+        }
+
+        // Validate weights (voltages)
+        if (!validateVoltage(values[0]) || !validateVoltage(values[2]))
+        {
+            return false;
+        }
+
+        // Validate frequencies
+        if (!validateFrequency(values[1]) || !validateFrequency(values[3]))
+        {
+            return false;
+        }
+
+        // Validate duration
+        if (values[4] <= 0)
+        {
+            Serial.println("ERR: Duration must be positive");
+            return false;
+        }
+
+        device.setActiveWaveform(
+            new SumOfSinesWave(device, values[0], values[1], values[2], values[3], 1, values[4]));
+        return true;
+    }
+
+    bool processRMP(const String &params)
+    {
+        float values[5]; // rampFreq, duration, weight0, freq0, stepSize
+        if (parseFloatArray(params, values, 5) != 5)
+        {
+            Serial.println("ERR: RMP requires rampFreq,duration,weight,freq,step");
+            return false;
+        }
+
+        // Validate frequency and weight
+        if (!validateFrequency(values[0]) || !validateFrequency(values[3]))
+        {
+            return false;
+        }
+        if (!validateVoltage(values[2]))
+        {
+            return false;
+        }
+
+        // Validate duration and step size
+        if (values[1] <= 0 || values[4] <= 0)
+        {
+            Serial.println("ERR: Duration and step size must be positive");
+            return false;
+        }
+
+        device.setActiveWaveform(
+            new RampedSineWave(device, values[0], values[2], values[3], values[4], values[1]));
         return true;
     }
 

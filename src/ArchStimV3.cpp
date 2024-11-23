@@ -7,8 +7,6 @@ void ArchStimV3::begin()
     initPins();
     initSPI();
     initI2C();
-    initADC();
-    initDAC();
 }
 
 void ArchStimV3::initPins()
@@ -80,6 +78,8 @@ void ArchStimV3::activateIsolated()
 {
     digitalWrite(DRIVE_EN, HIGH);
     delay(500);
+    initADC();
+    initDAC();
 }
 
 void ArchStimV3::deactivateIsolated()
@@ -89,12 +89,14 @@ void ArchStimV3::deactivateIsolated()
 
 void ArchStimV3::enableStim()
 {
+    dac.setAllVoltages(0);
     digitalWrite(DISABLE, LOW);
     digitalWrite(LED_STIM, HIGH);
 }
 
 void ArchStimV3::disableStim()
 {
+    dac.setAllVoltages(0);
     digitalWrite(DISABLE, HIGH);
     digitalWrite(LED_STIM, LOW);
 }
@@ -273,15 +275,135 @@ void ArchStimV3::randPulse(float ampArray[], int arrSize)
 //     // Implement time series reading logic
 // }
 
-// !! these settings appear to be hard coded
+// Generates a sum of two sine waves with specified weights, frequencies and duration
+// @param stepSize: update interval (ms)
+// @param weight0: amplitude of first sine wave (V)
+// @param freq0: frequency of first sine wave (Hz)
+// @param weight1: amplitude of second sine wave (V)
+// @param freq1: frequency of second sine wave (Hz)
+// @param duration: total duration (ms), 0 for infinite
+// Example: sumOfSines(1, 2.0, 10.0, 1.0, 20.0, 1000) // 2V@10Hz + 1V@20Hz for 1s
+//
+// Sum of Sines Wave Pattern:
+//
+// Time:      0ms    25ms   50ms   75ms   100ms
+//           |      |      |      |      |
+// Voltage:   3V                           3V
+//           ┌                             ┐
+//           │    Combined Waveform        │
+//    2V ────┤      = sin(2π×10t)         ├──── 2V
+//           │      + 0.5×sin(2π×20t)     │
+//    1V ────┤                            ├──── 1V
+//           │                            │
+//    0V ────┼────────────────────────────┼──── 0V
+//           │                            │
+//   -1V ────┤                            ├────-1V
+//           │                            │
+//   -2V ────┤                            ├────-2V
+//           │                            │
+//   -3V     └                            ┘    -3V
+//
+// Details:
+// - Combines two sine waves with different frequencies
+// - Total voltage is sum of both waves
+// - Updates every stepSize milliseconds
+// - Runs for specified duration or indefinitely if duration=0
+//
+// Parameters View:
+// weight0=2V, freq0=10Hz  -> Primary sine wave
+// weight1=1V, freq1=20Hz  -> Secondary sine wave
+// Combined peak voltage = |weight0| + |weight1|
 void ArchStimV3::sumOfSines(int stepSize, float weight0, float freq0, float weight1, float freq1, int duration)
 {
-    // Implement sum of sines logic
+    static unsigned long startTime = millis();
+    static unsigned long lastStepTime = 0;
+    unsigned long currentTime = millis();
+    unsigned long elapsedTime = currentTime - startTime;
+
+    // Check if the waveform duration has elapsed
+    if (duration > 0 && elapsedTime >= (unsigned long)duration)
+    {
+        dac.setAllVoltages(0); // Reset to 0V
+        return;
+    }
+
+    // Only update at specified step intervals
+    if (currentTime - lastStepTime >= stepSize)
+    {
+        // Calculate time in seconds for sine functions
+        float t = elapsedTime / 1000.0f;
+
+        // Calculate the sum of sines
+        float value = weight0 * sin(2 * PI * freq0 * t) +
+                      weight1 * sin(2 * PI * freq1 * t);
+
+        // Update the output
+        dac.setAllVoltages(value);
+        lastStepTime = currentTime;
+    }
 }
 
+// Generates a sine wave with amplitude that ramps up and down
+// @param rampFreq: frequency of amplitude ramping (Hz)
+// @param duration: total duration of waveform (ms)
+// @param weight0: maximum amplitude of sine wave (V)
+// @param freq0: frequency of sine wave (Hz)
+// @param stepSize: update interval (ms)
+// Example: rampedSine(0.5, 2000, 2.0, 10.0, 1) // 2V max, 10Hz sine, 0.5Hz ramp, 2s
+//
+// Ramped Sine Wave Pattern:
+//
+// Time:      0ms    500ms  1000ms 1500ms 2000ms
+//           |      |      |      |      |
+// Voltage:   2V     Envelope of amplitude     2V
+//           ┌─┐                             ┌─┐
+//           │ │    Ramped Sine Wave        │ │
+//    1V ────┤ └──┐                     ┌───┘ ├──── 1V
+//           │    │                     │     │
+//    0V ────┼────┼─────────────────────┼─────┼──── 0V
+//           │    │                     │     │
+//   -1V ────┤ ┌──┘                     └───┐ ├────-1V
+//           │ │                             │ │
+//   -2V     └─┘                             └─┘    -2V
+//
+// Details:
+// - Base sine wave at freq0
+// - Amplitude modulated by slower ramp at rampFreq
+// - Updates every stepSize milliseconds
+// - Runs for specified duration
+//
+// Parameters View:
+// rampFreq=0.5Hz -> Complete ramp cycle every 2 seconds
+// weight0=2V     -> Maximum amplitude of ±2V
+// freq0=10Hz     -> Base sine wave frequency
 void ArchStimV3::rampedSine(float rampFreq, float duration, float weight0, float freq0, int stepSize)
 {
-    // Implement ramped sine wave logic
+    static unsigned long startTime = millis();
+    static unsigned long lastStepTime = 0;
+    unsigned long currentTime = millis();
+    unsigned long elapsedTime = currentTime - startTime;
+
+    // Check if the waveform duration has elapsed
+    if (duration > 0 && elapsedTime >= (unsigned long)duration)
+    {
+        dac.setAllVoltages(0); // Reset to 0V
+        return;
+    }
+
+    // Only update at specified step intervals
+    if (currentTime - lastStepTime >= stepSize)
+    {
+        // Calculate time in seconds for sine functions
+        float t = elapsedTime / 1000.0f;
+
+        // Calculate the ramped sine wave
+        float envelope = abs(sin(PI * rampFreq * t));
+        float value = weight0 * envelope * sin(2 * PI * freq0 * t);
+
+        // Update the output
+        dac.setAllVoltages(value);
+        lastStepTime = currentTime;
+    }
 }
 
 // Utility functions for impedance and current measurement

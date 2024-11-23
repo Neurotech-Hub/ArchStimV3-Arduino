@@ -4,7 +4,7 @@
 
 ## Features
 
-- **Waveform Generation**: Square waves, pulse sequences, and random pulses
+- **Waveform Generation**: Square waves, pulse sequences, random pulses, and summed/ramped sine waves
 - **Object-Oriented Design**: Extensible waveform class hierarchy
 - **Active Waveform Management**: Dynamic waveform switching with proper cleanup
 - **Isolated Component Control**: Functions for managing isolated hardware
@@ -60,68 +60,61 @@
 
 ## Usage
 
-### Basic Initialization
+Refer to the `examples/ArchStimExample` for usage examples.
 
-```cpp
-#include <ArchStimV3.h>
+## Command Interpreter
 
-ArchStimV3 stimDevice;
+The `CommandInterpreter` class processes serial commands to generate waveforms.
 
-void setup() {
-    Serial.begin(9600);
-    stimDevice.begin();
-    stimDevice.activateIsolated();
-    stimDevice.enableStim();
-}
+## Command Interface System
+
+The command interface provides a text-based protocol for controlling the ArchStimV3 device through serial communication. It follows a simple syntax pattern:
+
+```
+COMMAND:parameters
 ```
 
-### Starting a Square Waveform
+This overview references:
 
-```cpp
-#include "Waveforms/SquareWave.h"
+- **System Control**: Device enable/disable, waveform stopping, diagnostic functions, system status checks
+- **Waveform Generation**: Basic waveforms (square, pulse), complex patterns (sum of sines, ramped sine), random/stochastic patterns, custom sequences
 
-// Start a 10 Hz square wave with ±2V amplitude
-float negVal = -2.0;
-float posVal = 2.0;
-float frequency = 10.0;
-stimDevice.setActiveWaveform(new SquareWave(stimDevice, negVal, posVal, frequency));
-```
+### Command System Architecture
 
-### Stopping the Active Waveform
+The command system operates through three distinct layers:
 
-```cpp
-stimDevice.setActiveWaveform(nullptr);  // Stops the active waveform
-```
+1. **Command Parsing and Validation**
+   - Serial command interpretation
+   - Format verification
+   - Command type identification
 
-### Running the Active Waveform
+2. **Parameter Processing**
+   - Type-specific parameter extraction
+   - Value range validation
+   - Array handling for complex patterns
 
-In the main `loop()`, continuously call `runWaveform()` to ensure the active waveform executes:
+3. **Waveform Management**
+   - Dynamic waveform instantiation
+   - Active pattern tracking
+   - Memory cleanup
 
-```cpp
-void loop() {
-    stimDevice.runWaveform();
-}
-```
+### Safety Features
 
-## Available Waveforms
+- **Input Validation**
+  - Voltage limit checking
+  - Frequency validation
+  - Parameter boundary enforcement
 
-### Square Wave
-- Parameters: negative voltage, positive voltage, frequency
-- Generates alternating voltage between negVal and posVal at specified frequency
-- Example: `±2V at 10Hz`
+- **Resource Management**
+  - Dynamic memory allocation tracking
+  - Array bounds checking
+  - Proper cleanup of inactive waveforms
 
-### Pulse Wave
-- Parameters: amplitude array, time array, array size
-- Supports two modes:
-  - Multiple durations: Each amplitude has its own duration
-  - Single duration: One duration for all amplitudes (set timeArray[1]=0)
-- Example: `[0V, 2V, -2V] for [25ms, 50ms, 200ms]`
+### Implementation
 
-### Random Pulse Wave
-- Parameters: amplitude array, array size
-- Zero state: 1000-1500ms at 0V
-- Active state: Randomly selects amplitude and duration (25ms or 100ms)
-- Example: `Random selection from [-2V, 2V, 1.5V, -1.5V]`
+The system is implemented in `src/CommandInterpreter.h` with supporting waveform classes in `src/Waveforms/`. Each waveform type inherits from a base class that defines common behaviors and interfaces.
+
+For specific implementations, see:
 
 ## License
 

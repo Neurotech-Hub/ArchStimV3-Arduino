@@ -151,6 +151,28 @@ void ArchStimV3::square(float negVal, float posVal, float frequency)
 // @param arrSize: size of ampArray (timeArray must be either size 1 or arrSize)
 // Example 1: float amp[]={0,2,-2}; int time[]={25,50,200}; pulse(amp, time, 3) // Different durations
 // Example 2: float amp[]={0,2,-2}; int time[]={100,0}; pulse(amp, time, 3) // 100ms each
+
+// Multiple Duration Mode:
+// Time:      0ms     25ms    75ms    275ms   300ms
+//            |       |       |       |       |
+// Voltage:   0V      2V      -2V     0V      2V
+//            ├───────┼───────┼───────┼───────┤
+// Duration:  |--25ms-|--50ms-|-200ms-|--25ms-|...
+
+// Array View:
+// ampArray:  [0V]---->[2V]---->[-2V]--->[0V]---(repeat)
+// timeArray: [25ms]-->[50ms]-->[200ms]->[25ms]-(repeat)
+
+// Single Duration Mode (timeArray[1]=0):
+// Time:      0ms     100ms   200ms   300ms   400ms
+//            |       |       |       |       |
+// Voltage:   0V      2V      -2V     0V      2V
+//            ├───────┼───────┼───────┼───────┤
+// Duration:  |-100ms-|-100ms-|-100ms-|-100ms-|...
+
+// Array View:
+// ampArray:  [0V]---->[2V]---->[-2V]--->[0V]---(repeat)
+// timeArray: [100ms]--┴--------┴--------┴-------(shared)
 void ArchStimV3::pulse(float ampArray[], int timeArray[], int arrSize)
 {
     static int currentIndex = 0;

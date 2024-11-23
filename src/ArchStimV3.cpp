@@ -216,7 +216,7 @@ void ArchStimV3::runWaveform()
 //           ┌──────┐      ┌──────┐      ┌────
 //           │      │      │      │      │
 //           │      │      │      │      │
-//           │      └─────┘      └──────┘
+//           │      └──────┘      └──────┘
 //          -2V
 //
 // Details:
@@ -256,8 +256,8 @@ void ArchStimV3::square(int negVal, int posVal, float frequency)
 // Duration:  |--25ms-|--50ms-|-200ms-|--25ms-|...
 
 // Array View:
-// ampArray:  [0µA]---->[2000µA]---->[-2000µA]--->[0µA]---(repeat)
-// timeArray: [25ms]-->[50ms]-->[200ms]->[25ms]-(repeat)
+// ampArray:  [0µA]────>[2000µA]────>[-2000µA]────>[0µA]──(repeat)
+// timeArray: [25ms]───>[50ms]────>[200ms]────>[25ms]─(repeat)
 
 // Single Duration Mode (timeArray[1]=0):
 // Time:      0ms     100ms   200ms   300ms   400ms
@@ -267,8 +267,8 @@ void ArchStimV3::square(int negVal, int posVal, float frequency)
 // Duration:  |-100ms-|-100ms-|-100ms-|-100ms-|...
 
 // Array View:
-// ampArray:  [0µA]---->[2000µA]---->[-2000µA]--->[0µA]---(repeat)
-// timeArray: [100ms]--┴--------┴--------┴-------(shared)
+// ampArray:  [0µA]────>[2000µA]────>[-2000µA]────>[0µA]──(repeat)
+// timeArray: [100ms]───┴─────────┴─────────┴────────(shared)
 void ArchStimV3::pulse(int ampArray[], int timeArray[], int arrSize)
 {
     static int currentIndex = 0;
@@ -297,9 +297,9 @@ void ArchStimV3::pulse(int ampArray[], int timeArray[], int arrSize)
 // Random Pulse Wave Pattern:
 //
 // Time:      0ms     1200ms  1225ms  2725ms  2825ms   4325ms
-//           |       |       |       |       |       |
+//            |       |       |       |       |       |
 // Current:   0µA     2000µA  0µA     -1500µA 0µA     1500µA
-//           ├───────┼───────┼───────┼───────┼───────┤
+//            ├───────┼───────┼───────┼───────┼───────┤
 // Duration:  |--1200ms--|-25ms-|-1500ms-|-100ms|-1500ms-|...
 // State:     |---ZERO---|-ACT-|--ZERO--|--ACT--|--ZERO--|...
 //
@@ -313,7 +313,7 @@ void ArchStimV3::pulse(int ampArray[], int timeArray[], int arrSize)
 // - Duration: either 25ms or 100ms (random)
 //
 // Array View:
-// ampArray: [2000µA, -2000µA, 1500µA, -1500µA] (random selection each active state)
+// ampArray: [2000µA]──[−2000µA]──[1500µA]──[−1500µA] (random selection each active state)
 void ArchStimV3::randPulse(int ampArray[], int arrSize)
 {
     static bool inZeroState = true;
@@ -364,21 +364,21 @@ void ArchStimV3::randPulse(int ampArray[], int arrSize)
 // Sum of Sines Wave Pattern:
 //
 // Time:      0ms    25ms   50ms   75ms   100ms
-//           |      |      |      |      |
-// Current:   3000µA                           3000µA
-//           ┌                             ┐
-//           │    Combined Waveform        │
-//    2000µA ────┤      = sin(2π×10t)×2000µA     ├──── 2000µA
-//           │      + 0.5×sin(2π×20t)     │
-//    1000µA ────┤                            ├──── 1000µA
-//           │                            │
-//    0µA ────┼────────────────────────────┼──── 0µA
-//           │                            │
-//   -1000µA ────┤                            ├────-1000µA
-//           │                            │
-//   -2000µA ────┤                            ├────-2000µA
-//           │                            │
-//   -3000µA     └                            ┘    -3000µA
+//            |      |      |      |      |
+// Current:   3000µA                            3000µA
+//            ┌──────────────────────────────┐
+//            │    Combined Waveform         │
+//    2000µA ─┤    = sin(2π×10t)×2000µA      ├─── 2000µA
+//            │    + sin(2π×20t)×1000µA      │
+//    1000µA ─┤                              ├─── 1000µA
+//            │                              │
+//       0µA ─┼──────────────────────────────┼─── 0µA
+//            │                              │
+//   -1000µA ─┤                              ├─── -1000µA
+//            │                              │
+//   -2000µA ─┤                              ├─── -2000µA
+//            │                              │
+//   -3000µA  └──────────────────────────────┘    -3000µA
 //
 // Details:
 // - Combines two sine waves with different frequencies
@@ -431,17 +431,17 @@ void ArchStimV3::sumOfSines(int stepSize, float weight0, float freq0, float weig
 // Ramped Sine Wave Pattern:
 //
 // Time:      0ms    500ms  1000ms 1500ms 2000ms
-//           |      |      |      |      |
+//            |      |      |      |      |
 // Current:   2000µA Envelope of amplitude     2000µA
-//           ┌─┐                             ┌─┐
-//           │ │    Ramped Sine Wave        │ │
-//    1000µA ────┤ └──┐                     ┌───┘ ├──── 1000µA
-//           │    │                     │     │
-//    0µA ────┼────┼─────────────────────┼─────┼──── 0µA
-//           │    │                     │     │
-//   -1000µA ────┤ ┌──┘                     └───┐ ├────-1000µA
-//           │ │                             │ │
-//   -2000µA     └─┘                             └─┘    -2000µA
+//            ┌─┐                             ┌─┐
+//            │ │    Ramped Sine Wave         │ │
+//    1000µA ─┤ └──┐                       ┌──┘ ├─── 1000µA
+//            │    │                       │    │
+//       0µA ─┼────┼───────────────────────┼────┼─── 0µA
+//            │    │                       │    │
+//   -1000µA ─┤ ┌──┘                       └──┐ ├─── -1000µA
+//            │ │                             │ │
+//   -2000µA  └─┘                             └─┘    -2000µA
 //
 // Details:
 // - Base sine wave at freq0
@@ -450,9 +450,9 @@ void ArchStimV3::sumOfSines(int stepSize, float weight0, float freq0, float weig
 // - Runs for specified duration
 //
 // Parameters View:
-// rampFreq=0.5Hz -> Complete ramp cycle every 2 seconds
-// weight0=2000µA     -> Maximum amplitude of ±2000µA
-// freq0=10Hz     -> Base sine wave frequency
+// rampFreq=0.5Hz  -> Complete ramp cycle every 2 seconds
+// weight0=2000µA  -> Maximum amplitude of ±2000µA
+// freq0=10Hz      -> Base sine wave frequency
 void ArchStimV3::rampedSine(float rampFreq, float duration, float weight0, float freq0, int stepSize)
 {
     static unsigned long startTime = millis();

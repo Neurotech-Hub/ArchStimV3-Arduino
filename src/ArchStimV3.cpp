@@ -1,4 +1,65 @@
 #include "ArchStimV3.h"
+#include "CommandInterpreter.h"
+#include "esp_system.h"
+#include "esp_bt.h"
+#include "esp_mac.h"
+
+// BLE Server Callbacks
+class MyServerCallbacks : public BLEServerCallbacks
+{
+private:
+    ArchStimV3 &device;
+
+public:
+    MyServerCallbacks(ArchStimV3 &dev) : device(dev) {}
+
+    void onConnect(BLEServer *pServer)
+    {
+        device.deviceConnected = true;
+        BLEDevice::setMTU(device.NEGOTIATE_MTU_SIZE);
+        device.mtuSize = BLEDevice::getMTU() - device.MTU_HEADER_SIZE;
+    }
+
+    void onDisconnect(BLEServer *pServer)
+    {
+        device.deviceConnected = false;
+    }
+};
+
+// Command Characteristic Callbacks
+class CommandCallbacks : public BLECharacteristicCallbacks
+{
+private:
+    CommandInterpreter &cmdInterpreter;
+
+public:
+    CommandCallbacks(CommandInterpreter &interpreter) : cmdInterpreter(interpreter) {}
+
+    void onWrite(BLECharacteristic *pCharacteristic)
+    {
+        String commands(pCharacteristic->getValue().c_str());
+        if (commands.length() > 0)
+        {
+            int startPos = 0;
+            int semicolonPos;
+
+            while ((semicolonPos = commands.indexOf(';', startPos)) != -1)
+            {
+                String cmd = commands.substring(startPos, semicolonPos);
+                cmd.trim();
+                cmdInterpreter.processCommand(cmd);
+                startPos = semicolonPos + 1;
+            }
+
+            if (startPos < commands.length())
+            {
+                String cmd = commands.substring(startPos);
+                cmd.trim();
+                cmdInterpreter.processCommand(cmd);
+            }
+        }
+    }
+};
 
 ArchStimV3::ArchStimV3() : adc(ADC_CS), dac(DAC_CS, VREF), activeWaveform(nullptr) {}
 
@@ -11,6 +72,12 @@ void ArchStimV3::begin()
 
 void ArchStimV3::initPins()
 {
+    pinMode(DRIVE_EN, OUTPUT);
+    digitalWrite(DRIVE_EN, LOW); // deactivate drive
+
+    pinMode(DISABLE, OUTPUT);
+    digitalWrite(DISABLE, LOW); // disable stim
+
     pinMode(USB_SENSE, INPUT);
     pinMode(USER_IN, INPUT_PULLUP);
 
@@ -38,14 +105,8 @@ void ArchStimV3::initPins()
 
     pinMode(FUEL_ALERT, INPUT);
 
-    pinMode(DISABLE, OUTPUT);
-    digitalWrite(DISABLE, LOW);
-
     pinMode(LED_B, OUTPUT);
-
-    pinMode(DRIVE_EN, OUTPUT);
-
-    activateIsolated(); // Ensure isolated components are activated (esp. for DAC/ADC)
+    digitalWrite(LED_B, LOW);
 }
 
 void ArchStimV3::initSPI()
@@ -62,9 +123,9 @@ void ArchStimV3::initADC()
 {
     adc.begin();
     adc.setSingleShotMode();
-    adc.setSamplingRate(ADS1118::RATE_128SPS);
-    adc.setInputSelected(ADS1118::AIN_0);
-    adc.setFullScaleRange(ADS1118::FSR_4096);
+    adc.setSamplingRate(adc.RATE_128SPS);
+    adc.setInputSelected(adc.AIN_0);
+    adc.setFullScaleRange(adc.FSR_4096);
 }
 
 void ArchStimV3::initDAC()
@@ -80,25 +141,41 @@ void ArchStimV3::activateIsolated()
     delay(500);
     initADC();
     initDAC();
+    setRedLED();
 }
 
 void ArchStimV3::deactivateIsolated()
 {
     digitalWrite(DRIVE_EN, LOW);
+    setRedLED();
 }
 
 void ArchStimV3::enableStim()
 {
-    dac.setAllVoltages(0);
+    setAllCurrents(0);
     digitalWrite(DISABLE, LOW);
     digitalWrite(LED_STIM, HIGH);
+    setRedLED();
 }
 
 void ArchStimV3::disableStim()
 {
-    dac.setAllVoltages(0);
+    setAllCurrents(0);
     digitalWrite(DISABLE, HIGH);
     digitalWrite(LED_STIM, LOW);
+    setRedLED();
+}
+
+void ArchStimV3::setRedLED()
+{
+    if (digitalRead(DRIVE_EN) == HIGH && digitalRead(DISABLE) == HIGH)
+    {
+        digitalWrite(LED_R, HIGH);
+    }
+    else
+    {
+        digitalWrite(LED_R, LOW);
+    }
 }
 
 void ArchStimV3::beep(int frequency, int duration)
@@ -139,7 +216,7 @@ void ArchStimV3::runWaveform()
 //           ┌──────┐      ┌──────┐      ┌────
 //           │      │      │      │      │
 //           │      │      │      │      │
-//           │      └──────┘      └──────┘
+//           │      └─────┘      └──────┘
 //          -2V
 //
 // Details:
@@ -147,7 +224,7 @@ void ArchStimV3::runWaveform()
 // Duty:      50%
 // States:    Alternates between posVal and negVal
 //
-void ArchStimV3::square(float negVal, float posVal, float frequency)
+void ArchStimV3::square(int negVal, int posVal, float frequency)
 {
     static bool highState = false;
     static unsigned long lastToggleTime = 0;
@@ -160,39 +237,39 @@ void ArchStimV3::square(float negVal, float posVal, float frequency)
         highState = !highState;
 
         // Set DAC output based on state
-        dac.setAllVoltages(highState ? posVal : negVal);
+        setAllCurrents(highState ? posVal : negVal);
     }
 }
 
 // Generates a pulse train using arrays of amplitudes and durations
-// @param ampArray: array of voltage values (V)
+// @param ampArray: array of current values (µA)
 // @param timeArray: array of durations (ms). If timeArray[1]=0, timeArray[0] is used for all amplitudes
 // @param arrSize: size of ampArray (timeArray must be either size 1 or arrSize)
-// Example 1: float amp[]={0,2,-2}; int time[]={25,50,200}; pulse(amp, time, 3) // Different durations
-// Example 2: float amp[]={0,2,-2}; int time[]={100,0}; pulse(amp, time, 3) // 100ms each
+// Example 1: int amp[]={0,2000,-2000}; int time[]={25,50,200}; pulse(amp, time, 3) // Different durations
+// Example 2: int amp[]={0,2000,-2000}; int time[]={100,0}; pulse(amp, time, 3) // 100ms each
 
 // Multiple Duration Mode:
 // Time:      0ms     25ms    75ms    275ms   300ms
 //            |       |       |       |       |
-// Voltage:   0V      2V      -2V     0V      2V
+// Current:   0µA     2000µA  -2000µA 0µA     2000µA
 //            ├───────┼───────┼───────┼───────┤
 // Duration:  |--25ms-|--50ms-|-200ms-|--25ms-|...
 
 // Array View:
-// ampArray:  [0V]---->[2V]---->[-2V]--->[0V]---(repeat)
+// ampArray:  [0µA]---->[2000µA]---->[-2000µA]--->[0µA]---(repeat)
 // timeArray: [25ms]-->[50ms]-->[200ms]->[25ms]-(repeat)
 
 // Single Duration Mode (timeArray[1]=0):
 // Time:      0ms     100ms   200ms   300ms   400ms
 //            |       |       |       |       |
-// Voltage:   0V      2V      -2V     0V      2V
+// Current:   0µA     2000µA  -2000µA 0µA     2000µA
 //            ├───────┼───────┼───────┼───────┤
 // Duration:  |-100ms-|-100ms-|-100ms-|-100ms-|...
 
 // Array View:
-// ampArray:  [0V]---->[2V]---->[-2V]--->[0V]---(repeat)
+// ampArray:  [0µA]---->[2000µA]---->[-2000µA]--->[0µA]---(repeat)
 // timeArray: [100ms]--┴--------┴--------┴-------(shared)
-void ArchStimV3::pulse(float ampArray[], int timeArray[], int arrSize)
+void ArchStimV3::pulse(int ampArray[], int timeArray[], int arrSize)
 {
     static int currentIndex = 0;
     static unsigned long lastTransitionTime = 0;
@@ -206,43 +283,43 @@ void ArchStimV3::pulse(float ampArray[], int timeArray[], int arrSize)
         currentIndex = (currentIndex + 1) % arrSize;
         lastTransitionTime = currentTime;
 
-        // Set the new voltage
-        dac.setAllVoltages(ampArray[currentIndex]);
+        // Set the new current
+        setAllCurrents(ampArray[currentIndex]);
     }
 }
 
-// Generates random pulses alternating between 0V and random values from ampArray
+// Generates random pulses alternating between 0µA and random values from ampArray
 // Zero state lasts 1000-1500ms, active state lasts either 25ms or 100ms
-// @param ampArray: array of possible voltage values (V)
+// @param ampArray: array of possible current values (µA)
 // @param arrSize: size of ampArray
-// Example: float amp[]={-2,2,1.5,-1.5}; randPulse(amp, 4) // Random ±1.5V or ±2V pulses
+// Example: int amp[]={-2000,2000,1500,-1500}; randPulse(amp, 4) // Random ±1500µA or ±2000µA pulses
 //
 // Random Pulse Wave Pattern:
 //
 // Time:      0ms     1200ms  1225ms  2725ms  2825ms   4325ms
 //           |       |       |       |       |       |
-// Voltage:   0V      2V      0V      -1.5V   0V      1.5V
+// Current:   0µA     2000µA  0µA     -1500µA 0µA     1500µA
 //           ├───────┼───────┼───────┼───────┼───────┤
 // Duration:  |--1200ms--|-25ms-|-1500ms-|-100ms|-1500ms-|...
 // State:     |---ZERO---|-ACT-|--ZERO--|--ACT--|--ZERO--|...
 //
 // Details:
 // ZERO state:
-// - Always 0V
+// - Always 0µA
 // - Duration: 1000-1500ms (random)
 //
 // ACTIVE state:
-// - Random voltage from ampArray
+// - Random current from ampArray
 // - Duration: either 25ms or 100ms (random)
 //
 // Array View:
-// ampArray: [2V, -2V, 1.5V, -1.5V] (random selection each active state)
-void ArchStimV3::randPulse(float ampArray[], int arrSize)
+// ampArray: [2000µA, -2000µA, 1500µA, -1500µA] (random selection each active state)
+void ArchStimV3::randPulse(int ampArray[], int arrSize)
 {
     static bool inZeroState = true;
     static unsigned long lastTransitionTime = 0;
     static unsigned long currentDuration = 1000;
-    static float currentAmplitude = 0;
+    static int currentAmplitude = 0;
 
     unsigned long currentTime = millis();
 
@@ -265,7 +342,7 @@ void ArchStimV3::randPulse(float ampArray[], int arrSize)
             currentDuration = 1000 + random(501);
         }
 
-        dac.setAllVoltages(currentAmplitude);
+        setAllCurrents(currentAmplitude);
     }
 }
 
@@ -277,42 +354,42 @@ void ArchStimV3::randPulse(float ampArray[], int arrSize)
 
 // Generates a sum of two sine waves with specified weights, frequencies and duration
 // @param stepSize: update interval (ms)
-// @param weight0: amplitude of first sine wave (V)
+// @param weight0: amplitude of first sine wave (µA)
 // @param freq0: frequency of first sine wave (Hz)
-// @param weight1: amplitude of second sine wave (V)
+// @param weight1: amplitude of second sine wave (µA)
 // @param freq1: frequency of second sine wave (Hz)
 // @param duration: total duration (ms), 0 for infinite
-// Example: sumOfSines(1, 2.0, 10.0, 1.0, 20.0, 1000) // 2V@10Hz + 1V@20Hz for 1s
+// Example: sumOfSines(1, 2000, 10.0, 1000, 20.0, 1000) // 2000µA@10Hz + 1000µA@20Hz for 1s
 //
 // Sum of Sines Wave Pattern:
 //
 // Time:      0ms    25ms   50ms   75ms   100ms
 //           |      |      |      |      |
-// Voltage:   3V                           3V
+// Current:   3000µA                           3000µA
 //           ┌                             ┐
 //           │    Combined Waveform        │
-//    2V ────┤      = sin(2π×10t)         ├──── 2V
+//    2000µA ────┤      = sin(2π×10t)×2000µA     ├──── 2000µA
 //           │      + 0.5×sin(2π×20t)     │
-//    1V ────┤                            ├──── 1V
+//    1000µA ────┤                            ├──── 1000µA
 //           │                            │
-//    0V ────┼────────────────────────────┼──── 0V
+//    0µA ────┼────────────────────────────┼──── 0µA
 //           │                            │
-//   -1V ────┤                            ├────-1V
+//   -1000µA ────┤                            ├────-1000µA
 //           │                            │
-//   -2V ────┤                            ├────-2V
+//   -2000µA ────┤                            ├────-2000µA
 //           │                            │
-//   -3V     └                            ┘    -3V
+//   -3000µA     └                            ┘    -3000µA
 //
 // Details:
 // - Combines two sine waves with different frequencies
-// - Total voltage is sum of both waves
+// - Total current is sum of both waves
 // - Updates every stepSize milliseconds
 // - Runs for specified duration or indefinitely if duration=0
 //
 // Parameters View:
-// weight0=2V, freq0=10Hz  -> Primary sine wave
-// weight1=1V, freq1=20Hz  -> Secondary sine wave
-// Combined peak voltage = |weight0| + |weight1|
+// weight0=2000µA, freq0=10Hz  -> Primary sine wave
+// weight1=1000µA, freq1=20Hz  -> Secondary sine wave
+// Combined peak current = |weight0| + |weight1|
 void ArchStimV3::sumOfSines(int stepSize, float weight0, float freq0, float weight1, float freq1, int duration)
 {
     static unsigned long startTime = millis();
@@ -323,7 +400,7 @@ void ArchStimV3::sumOfSines(int stepSize, float weight0, float freq0, float weig
     // Check if the waveform duration has elapsed
     if (duration > 0 && elapsedTime >= (unsigned long)duration)
     {
-        dac.setAllVoltages(0); // Reset to 0V
+        setAllCurrents(0);
         return;
     }
 
@@ -333,12 +410,12 @@ void ArchStimV3::sumOfSines(int stepSize, float weight0, float freq0, float weig
         // Calculate time in seconds for sine functions
         float t = elapsedTime / 1000.0f;
 
-        // Calculate the sum of sines
+        // Calculate the sum of sines (values are in microamps)
         float value = weight0 * sin(2 * PI * freq0 * t) +
                       weight1 * sin(2 * PI * freq1 * t);
 
         // Update the output
-        dac.setAllVoltages(value);
+        setAllCurrents(static_cast<int>(value));
         lastStepTime = currentTime;
     }
 }
@@ -346,35 +423,35 @@ void ArchStimV3::sumOfSines(int stepSize, float weight0, float freq0, float weig
 // Generates a sine wave with amplitude that ramps up and down
 // @param rampFreq: frequency of amplitude ramping (Hz)
 // @param duration: total duration of waveform (ms)
-// @param weight0: maximum amplitude of sine wave (V)
+// @param weight0: maximum amplitude of sine wave (µA)
 // @param freq0: frequency of sine wave (Hz)
 // @param stepSize: update interval (ms)
-// Example: rampedSine(0.5, 2000, 2.0, 10.0, 1) // 2V max, 10Hz sine, 0.5Hz ramp, 2s
+// Example: rampedSine(0.5, 2000, 2000, 10.0, 1) // 2000µA max, 10Hz sine, 0.5Hz ramp, 2s
 //
 // Ramped Sine Wave Pattern:
 //
 // Time:      0ms    500ms  1000ms 1500ms 2000ms
 //           |      |      |      |      |
-// Voltage:   2V     Envelope of amplitude     2V
+// Current:   2000µA Envelope of amplitude     2000µA
 //           ┌─┐                             ┌─┐
 //           │ │    Ramped Sine Wave        │ │
-//    1V ────┤ └──┐                     ┌───┘ ├──── 1V
+//    1000µA ────┤ └──┐                     ┌───┘ ├──── 1000µA
 //           │    │                     │     │
-//    0V ────┼────┼─────────────────────┼─────┼──── 0V
+//    0µA ────┼────┼─────────────────────┼─────┼──── 0µA
 //           │    │                     │     │
-//   -1V ────┤ ┌──┘                     └───┐ ├────-1V
+//   -1000µA ────┤ ┌──┘                     └───┐ ├────-1000µA
 //           │ │                             │ │
-//   -2V     └─┘                             └─┘    -2V
+//   -2000µA     └─┘                             └─┘    -2000µA
 //
 // Details:
 // - Base sine wave at freq0
 // - Amplitude modulated by slower ramp at rampFreq
-// - Updates every stepSize milliseconds
+// - Updates output current every stepSize milliseconds
 // - Runs for specified duration
 //
 // Parameters View:
 // rampFreq=0.5Hz -> Complete ramp cycle every 2 seconds
-// weight0=2V     -> Maximum amplitude of ±2V
+// weight0=2000µA     -> Maximum amplitude of ±2000µA
 // freq0=10Hz     -> Base sine wave frequency
 void ArchStimV3::rampedSine(float rampFreq, float duration, float weight0, float freq0, int stepSize)
 {
@@ -386,7 +463,7 @@ void ArchStimV3::rampedSine(float rampFreq, float duration, float weight0, float
     // Check if the waveform duration has elapsed
     if (duration > 0 && elapsedTime >= (unsigned long)duration)
     {
-        dac.setAllVoltages(0); // Reset to 0V
+        setAllCurrents(0);
         return;
     }
 
@@ -396,12 +473,12 @@ void ArchStimV3::rampedSine(float rampFreq, float duration, float weight0, float
         // Calculate time in seconds for sine functions
         float t = elapsedTime / 1000.0f;
 
-        // Calculate the ramped sine wave
+        // Calculate the ramped sine wave (values are in microamps)
         float envelope = abs(sin(PI * rampFreq * t));
         float value = weight0 * envelope * sin(2 * PI * freq0 * t);
 
         // Update the output
-        dac.setAllVoltages(value);
+        setAllCurrents(static_cast<int>(value));
         lastStepTime = currentTime;
     }
 }
@@ -416,4 +493,58 @@ float ArchStimV3::zCheck()
 void ArchStimV3::printCurrent()
 {
     // Implement current print logic
+}
+
+void ArchStimV3::beginBLE(CommandInterpreter &interpreter)
+{
+    cmdInterpreter = &interpreter;
+
+    // Initialize BLE
+    String deviceName = "ARCH_";
+    uint8_t mac[6];
+    esp_efuse_mac_get_default(mac);
+    char macStr[5];
+    snprintf(macStr, sizeof(macStr), "%02X%02X", mac[4], mac[5]);
+    deviceName += String(macStr);
+
+    BLEDevice::init(deviceName.c_str());
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks(*this));
+
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+
+    pStatusCharacteristic = pService->createCharacteristic(
+        STATUS_CHAR_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+
+    pCommandCharacteristic = pService->createCharacteristic(
+        COMMAND_CHAR_UUID,
+        BLECharacteristic::PROPERTY_WRITE);
+    pCommandCharacteristic->setCallbacks(new CommandCallbacks(interpreter));
+
+    pService->start();
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    pAdvertising->setMinPreferred(0x06);
+    pAdvertising->setMinPreferred(0x12);
+    BLEDevice::startAdvertising();
+}
+
+void ArchStimV3::updateStatus(const char *status)
+{
+    if (deviceConnected && pStatusCharacteristic != nullptr)
+    {
+        pStatusCharacteristic->setValue(status);
+        pStatusCharacteristic->notify();
+    }
+}
+
+void ArchStimV3::setAllCurrents(int microAmps)
+{
+    // Clamp the input between -2000 and 2000 µA
+    microAmps = constrain(microAmps, -2000, 2000);
+
+    // Convert microamps to DAC value and set
+    dac.setAllVoltages(microAmps / 1000.0f); // TODO: Replace with direct current control
 }

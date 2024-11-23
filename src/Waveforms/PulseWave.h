@@ -7,18 +7,15 @@
 class PulseWave : public Waveform
 {
 public:
-    PulseWave(ArchStimV3 &device, float *ampArray, int *timeArray, int arrSize);
+    PulseWave(ArchStimV3 &device, int *ampArray, int *timeArray, int arrSize);
     ~PulseWave();
     void execute() override;
 
 private:
     ArchStimV3 &device;
-    float *ampArray;
+    int *ampArray;
     int *timeArray;
     int arrSize;
-    int currentIndex;
-    unsigned long lastTransitionTime;
-    bool singleDurationMode;
 };
 
 #endif

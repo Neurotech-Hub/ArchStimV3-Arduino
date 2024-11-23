@@ -102,8 +102,8 @@ public:
 private:
     ArchStimV3 &device;
     static const int MAX_ARRAY_SIZE = 10;
-    static const float MAX_VOLTAGE = 5.0; // Maximum allowed voltage
-    static const float MAX_FREQ = 1000.0; // Maximum frequency in Hz
+    static constexpr float MAX_VOLTAGE = 5.0; // Maximum allowed voltage
+    static constexpr float MAX_FREQ = 1000.0; // Maximum frequency in Hz
 
     bool validateVoltage(float voltage)
     {
@@ -194,10 +194,10 @@ private:
         String ampStr = params.substring(0, splitIndex);
         String timeStr = params.substring(splitIndex + 1);
 
-        float ampArray[MAX_ARRAY_SIZE];
+        int ampArray[MAX_ARRAY_SIZE];
         int timeArray[MAX_ARRAY_SIZE];
 
-        int ampCount = parseFloatArray(ampStr, ampArray, MAX_ARRAY_SIZE);
+        int ampCount = parseIntArray(ampStr, ampArray, MAX_ARRAY_SIZE);
         if (!validateArraySize(ampCount))
             return false;
 
@@ -229,8 +229,8 @@ private:
 
     bool processRND(const String &params)
     {
-        float ampArray[MAX_ARRAY_SIZE];
-        int count = parseFloatArray(params, ampArray, MAX_ARRAY_SIZE);
+        int ampArray[MAX_ARRAY_SIZE];
+        int count = parseIntArray(params, ampArray, MAX_ARRAY_SIZE);
 
         if (!validateArraySize(count))
             return false;

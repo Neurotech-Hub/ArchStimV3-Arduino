@@ -7,21 +7,14 @@
 class RandomPulseWave : public Waveform
 {
 public:
-    RandomPulseWave(ArchStimV3 &device, float *ampArray, int arrSize);
+    RandomPulseWave(ArchStimV3 &device, int *ampArray, int arrSize);
     ~RandomPulseWave();
     void execute() override;
 
 private:
     ArchStimV3 &device;
-    float *ampArray;
+    int *ampArray;
     int arrSize;
-    bool inZeroState;
-    unsigned long lastTransitionTime;
-    unsigned long currentDuration;
-    float currentAmplitude;
-
-    void transitionToZeroState();
-    void transitionToActiveState();
 };
 
 #endif

@@ -18,8 +18,6 @@ private:
     float freq1;
     int stepSize;
     int duration;
-    unsigned long startTime;
-    unsigned long lastStepTime;
 };
 
 #endif

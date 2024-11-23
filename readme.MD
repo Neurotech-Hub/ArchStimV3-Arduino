@@ -62,13 +62,10 @@
 
 Refer to the `examples/ArchStimExample` for usage examples.
 
+
 ## Command Interpreter
 
-The `CommandInterpreter` class processes serial commands to generate waveforms.
-
-## Command Interface System
-
-The command interface provides a text-based protocol for controlling the ArchStimV3 device through serial communication. It follows a simple syntax pattern:
+The `CommandInterpreter` class processes serial commands to generate waveforms. It follows a simple syntax pattern:
 
 ```
 COMMAND:parameters

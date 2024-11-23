@@ -128,6 +128,23 @@ void ArchStimV3::runWaveform()
 // @param posVal: positive voltage value (V)
 // @param frequency: wave frequency (Hz)
 // Example: square(-2.0, 2.0, 10.0) // ±2V square wave at 10Hz
+//
+// Square Wave Pattern:
+//
+// Time:      0ms    50ms   100ms  150ms  200ms
+//           |      |      |      |      |
+// Voltage:   2V     -2V    2V     -2V    2V
+//           ┌──────┐      ┌──────┐      ┌────
+//           │      │      │      │      │
+//           │      │      │      │      │
+//           │      └──────┘      └──────┘
+//          -2V
+//
+// Details:
+// Period:    100ms (10Hz)
+// Duty:      50%
+// States:    Alternates between posVal and negVal
+//
 void ArchStimV3::square(float negVal, float posVal, float frequency)
 {
     static bool highState = false;
@@ -197,6 +214,27 @@ void ArchStimV3::pulse(float ampArray[], int timeArray[], int arrSize)
 // @param ampArray: array of possible voltage values (V)
 // @param arrSize: size of ampArray
 // Example: float amp[]={-2,2,1.5,-1.5}; randPulse(amp, 4) // Random ±1.5V or ±2V pulses
+//
+// Random Pulse Wave Pattern:
+//
+// Time:      0ms     1200ms  1225ms  2725ms  2825ms   4325ms
+//           |       |       |       |       |       |
+// Voltage:   0V      2V      0V      -1.5V   0V      1.5V
+//           ├───────┼───────┼───────┼───────┼───────┤
+// Duration:  |--1200ms--|-25ms-|-1500ms-|-100ms|-1500ms-|...
+// State:     |---ZERO---|-ACT-|--ZERO--|--ACT--|--ZERO--|...
+//
+// Details:
+// ZERO state:
+// - Always 0V
+// - Duration: 1000-1500ms (random)
+//
+// ACTIVE state:
+// - Random voltage from ampArray
+// - Duration: either 25ms or 100ms (random)
+//
+// Array View:
+// ampArray: [2V, -2V, 1.5V, -1.5V] (random selection each active state)
 void ArchStimV3::randPulse(float ampArray[], int arrSize)
 {
     static bool inZeroState = true;

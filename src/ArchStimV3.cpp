@@ -243,10 +243,12 @@ void ArchStimV3::square(int negVal, int posVal, float frequency)
 
 // Generates a pulse train using arrays of amplitudes and durations
 // @param ampArray: array of current values (µA)
-// @param timeArray: array of durations (ms). If timeArray[1]=0, timeArray[0] is used for all amplitudes
-// @param arrSize: size of ampArray (timeArray must be either size 1 or arrSize)
+// @param timeArray: array of durations (ms). Can be either:
+//                  - Single value: same duration used for all amplitudes
+//                  - Same size as ampArray: each duration corresponds to its amplitude
+// @param arrSize: size of ampArray
 // Example 1: int amp[]={0,2000,-2000}; int time[]={25,50,200}; pulse(amp, time, 3) // Different durations
-// Example 2: int amp[]={0,2000,-2000}; int time[]={100,0}; pulse(amp, time, 3) // 100ms each
+// Example 2: int amp[]={0,2000,-2000}; int time[]={100}; pulse(amp, time, 3) // 100ms each
 
 // Multiple Duration Mode:
 // Time:      0ms     25ms    75ms    275ms   300ms
@@ -259,7 +261,7 @@ void ArchStimV3::square(int negVal, int posVal, float frequency)
 // ampArray:  [0µA]────>[2000µA]────>[-2000µA]────>[0µA]──(repeat)
 // timeArray: [25ms]───>[50ms]────>[200ms]────>[25ms]─(repeat)
 
-// Single Duration Mode (timeArray[1]=0):
+// Single Duration Mode:
 // Time:      0ms     100ms   200ms   300ms   400ms
 //            |       |       |       |       |
 // Current:   0µA     2000µA  -2000µA 0µA     2000µA
@@ -268,7 +270,8 @@ void ArchStimV3::square(int negVal, int posVal, float frequency)
 
 // Array View:
 // ampArray:  [0µA]────>[2000µA]────>[-2000µA]────>[0µA]──(repeat)
-// timeArray: [100ms]───┴─────────┴─────────┴────────(shared)
+// timeArray: [100ms]  (same duration for all values)
+
 void ArchStimV3::pulse(int ampArray[], int timeArray[], int arrSize)
 {
     static int currentIndex = 0;
@@ -276,8 +279,12 @@ void ArchStimV3::pulse(int ampArray[], int timeArray[], int arrSize)
 
     unsigned long currentTime = millis();
 
+    // Get the duration for the current index
+    // If timeArray has only one value, use that for all indices
+    int duration = (timeArray[1] == 0) ? timeArray[0] : timeArray[currentIndex];
+
     // Check if it's time to transition to the next value
-    if (currentTime - lastTransitionTime >= timeArray[currentIndex])
+    if (currentTime - lastTransitionTime >= duration)
     {
         // Move to next index, wrapping around to 0 if we reach the end
         currentIndex = (currentIndex + 1) % arrSize;

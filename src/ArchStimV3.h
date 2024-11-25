@@ -36,9 +36,10 @@
 #define DISABLE 41
 #define FUEL_ALERT 42
 
-const double VREF = 2.048;
+static constexpr double VREF = 2.048;
 const int DAC_MIN = -32768;
 const int DAC_MAX = 32767;
+const int MAX_CURRENT = 2000;
 
 // BLE configuration
 #define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -59,6 +60,10 @@ public:
     // ADC and DAC
     ADS1118 adc;
     AD57X4R dac;
+
+    // hardware variables
+    float V_COMPN = 32.0;
+    float V_COMPP = 32.0;
 
     // Initialization methods
     void begin();

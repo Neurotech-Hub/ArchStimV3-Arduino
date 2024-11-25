@@ -23,6 +23,8 @@ public:
         Serial.println("  BEP:f,d       Beep (freq,duration)");
         Serial.println("  ZCK           Check impedance");
         Serial.println("  HELP          Show this help");
+        Serial.println("  SETV:v        Set voltage (±4.096V)");
+        Serial.println("  SETI:i        Set current in microamps (±2000µA)");
         Serial.println("\nWaveforms:");
         Serial.println("  SQR:n,p,f     Square (negV,posV,freq)");
         Serial.println("  PLS:a,b,c;t   Pulse (ampArray;timeArray)");
@@ -83,6 +85,10 @@ public:
             Serial.println(z);
             return true;
         }
+        else if (type == "SETV")
+            return processSETV(params);
+        else if (type == "SETI")
+            return processSETI(params);
         // Waveform commands
         else if (type == "SQR")
             return processSQR(params);
@@ -104,14 +110,14 @@ public:
 private:
     ArchStimV3 &device;
     static const int MAX_ARRAY_SIZE = 10;
-    static constexpr float MAX_VOLTAGE = 5.0; // Maximum allowed voltage
-    static constexpr float MAX_FREQ = 1000.0; // Maximum frequency in Hz
+    static constexpr float MAX_FREQ = 1000.0;          // Maximum frequency in Hz
+    static constexpr float MAX_DAC_VOLTAGE = 2 * VREF; // ±4.096V
 
     bool validateVoltage(float voltage)
     {
-        if (abs(voltage) > MAX_VOLTAGE)
+        if (voltage > device.V_COMPP || voltage < -device.V_COMPN)
         {
-            Serial.println("ERR: Voltage exceeds ±5V limit");
+            Serial.println("ERR: Voltage exceeds V_COMP bounds.");
             return false;
         }
         return true;
@@ -142,6 +148,26 @@ private:
         if (size <= 0 || size > MAX_ARRAY_SIZE)
         {
             Serial.println("ERR: Invalid array size");
+            return false;
+        }
+        return true;
+    }
+
+    bool validateDACVoltage(float voltage)
+    {
+        if (abs(voltage) > MAX_DAC_VOLTAGE)
+        {
+            Serial.println("ERR: Voltage exceeds ±4.096V limit");
+            return false;
+        }
+        return true;
+    }
+
+    bool validateCurrent(int microAmps)
+    {
+        if (abs(microAmps) > MAX_CURRENT)
+        {
+            Serial.println("ERR: Current exceeds ±2000µA limit");
             return false;
         }
         return true;
@@ -310,6 +336,42 @@ private:
 
         device.setActiveWaveform(
             new RampedSineWave(device, values[0], values[2], values[3], values[4], values[1]));
+        return true;
+    }
+
+    bool processSETV(const String &params)
+    {
+        float voltage;
+        if (parseFloatArray(params, &voltage, 1) != 1)
+        {
+            Serial.println("ERR: SETV requires voltage value");
+            return false;
+        }
+
+        if (!validateDACVoltage(voltage))
+        {
+            return false;
+        }
+
+        device.setVoltage(voltage);
+        return true;
+    }
+
+    bool processSETI(const String &params)
+    {
+        int microAmps;
+        if (parseIntArray(params, &microAmps, 1) != 1)
+        {
+            Serial.println("ERR: SETI requires current value in microamps");
+            return false;
+        }
+
+        if (!validateCurrent(microAmps))
+        {
+            return false;
+        }
+
+        device.setAllCurrents(microAmps);
         return true;
     }
 

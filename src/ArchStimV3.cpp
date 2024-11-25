@@ -501,7 +501,9 @@ void ArchStimV3::rampedSine(float rampFreq, float duration, float weight0, float
 // Utility functions for impedance and current measurement
 float ArchStimV3::zCheck()
 {
-    // Implement impedance check logic
+    double mv = getMilliVolts(0);
+    Serial.print("mV: ");
+    Serial.println(mv);
     return Z;
 }
 
@@ -561,6 +563,20 @@ uint16_t ArchStimV3::getRawADC(uint8_t channel)
         adsChannel = ADS1118::AIN_0; // Default to channel 0 if invalid input
     }
     return adc.getADCValue(adsChannel);
+}
+
+// Transfer Function (V as a function of uA): -1.115e-03*uA + -2.189e-05
+// see: /Users/gaidica/Documents/MATLAB/Ching Lab/ARCHv3_IV.m
+void ArchStimV3::setAllCurrents(int microAmps)
+{
+    // Clamp the input between -2000 and 2000 µA
+    microAmps = constrain(microAmps, -MAX_CURRENT, MAX_CURRENT);
+
+    // Convert microamps to voltage using transfer function
+    float voltage = -1.115e-03f * microAmps + -2.189e-05f;
+
+    // Set DAC output
+    dac.setAllVoltages(voltage);
 }
 
 // BLE Server Callbacks
@@ -674,13 +690,4 @@ void ArchStimV3::updateStatus(const char *status)
         pStatusCharacteristic->setValue(status);
         pStatusCharacteristic->notify();
     }
-}
-
-void ArchStimV3::setAllCurrents(int microAmps)
-{
-    // Clamp the input between -2000 and 2000 µA
-    microAmps = constrain(microAmps, -2000, 2000);
-
-    // Convert microamps to DAC value and set
-    dac.setAllVoltages(microAmps / 1000.0f); // TODO: Replace with direct current control
 }

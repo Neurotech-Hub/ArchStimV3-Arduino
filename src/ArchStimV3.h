@@ -7,12 +7,16 @@
 #include <Wire.h>
 #include "ADS1118.h"
 #include "AD57X4R.h"
-#include "Waveforms/Waveform.h"  // Base waveform class
+#include "Waveforms/Waveform.h" // Base waveform class
 
 // Define pins and constants as needed
 #define USB_SENSE 1
 #define USER_IN 2
+#define SDA_PIN 3
+#define SCL_PIN 4
 #define LED_B 5
+#define PS_HOLD 6
+#define SMART_INT 7
 #define EXT_OUTPUT 9
 #define BUZZ 10
 #define EXT_INPUT 11
@@ -24,17 +28,17 @@
 #define SCK 36
 #define MOSI 35
 #define SD_CS 34
-#define FUEL_ALERT 42
-#define DISABLE 41
+#define RTC_INT 39
 #define DRIVE_EN 40
-#define SDA_PIN 3
-#define SCL_PIN 4
+#define DISABLE 41
+#define FUEL_ALERT 42
 
 const double VREF = 2.048;
 const int DAC_MIN = -32768;
 const int DAC_MAX = 32767;
 
-class ArchStimV3 {
+class ArchStimV3
+{
 public:
     ArchStimV3();
 
@@ -57,10 +61,10 @@ public:
     // Utility functions
     float zCheck();
     void printCurrent();
-
+    void setCSDelay(uint16_t delay);
     // Waveform management
-    void setActiveWaveform(Waveform* waveform);  // Sets the current active waveform
-    void runWaveform();                          // Executes the active waveform if set
+    void setActiveWaveform(Waveform *waveform); // Sets the current active waveform
+    void runWaveform();                         // Executes the active waveform if set
 
     // getters and setters
     void activateIsolated();
@@ -69,12 +73,16 @@ public:
     void disableStim();
     void beep(int frequency, int duration);
 
+    double getMilliVolts(uint8_t channel);
+    void setVoltage(float voltage);
+    uint16_t getRawADC(uint8_t channel);
+
 private:
     ADS1118 adc;
     AD57X4R dac;
-    float Z;  // Head impedance or similar variable, initialized in functions as needed
+    float Z; // Head impedance or similar variable, initialized in functions as needed
 
-    Waveform* activeWaveform;  // Pointer to currently active waveform
+    Waveform *activeWaveform; // Pointer to currently active waveform
 };
 
 #endif

@@ -8,6 +8,9 @@
 #include "ADS1118.h"
 #include "AD57X4R.h"
 #include "Waveforms/Waveform.h" // Base waveform class
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
 
 // Define pins and constants as needed
 #define USB_SENSE 1
@@ -37,10 +40,25 @@ const double VREF = 2.048;
 const int DAC_MIN = -32768;
 const int DAC_MAX = 32767;
 
+// BLE configuration
+#define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define STATUS_CHAR_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define COMMAND_CHAR_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a9"
+
+class CommandInterpreter; // Forward declaration
+
 class ArchStimV3
 {
+    // Forward declare the callback classes
+    friend class MyServerCallbacks;
+    friend class CommandCallbacks;
+
 public:
     ArchStimV3();
+
+    // ADC and DAC
+    ADS1118 adc;
+    AD57X4R dac;
 
     // Initialization methods
     void begin();
@@ -51,10 +69,9 @@ public:
     void initDAC();
 
     // Waveform and pulse generation methods (called by specific waveform classes)
-    void square(float negVal, float posVal, float frequency);
-    void pulse(float ampArray[], int timeArray[], int arrSize);
-    void randPulse(float ampArray[], int arrSize);
-    void readTimeSeries(float ampArray[], int arrSize, int stepSize);
+    void square(int negVal, int posVal, float frequency);
+    void pulse(int ampArray[], int timeArray[], int arrSize);
+    void randPulse(int ampArray[], int arrSize);
     void sumOfSines(int stepSize, float weight0, float freq0, float weight1, float freq1, int duration);
     void rampedSine(float rampFreq, float duration, float weight0, float freq0, int stepSize);
 
@@ -72,17 +89,41 @@ public:
     void enableStim();
     void disableStim();
     void beep(int frequency, int duration);
+    void setRedLED();
+
+    // BLE methods
+    void beginBLE(CommandInterpreter &cmdInterpreter);
+    void updateStatus(const char *status);
+    bool isConnected() const { return deviceConnected; }
+    void setConnected(bool connected) { deviceConnected = connected; }
+    void updateMTUSize(uint16_t newSize) { mtuSize = newSize; }
+    uint16_t getMTUSize() const { return mtuSize; }
+
+    // BLE constants
+    static constexpr uint16_t NEGOTIATE_MTU_SIZE = 515;
+    static constexpr uint16_t MTU_HEADER_SIZE = 3;
+
+    // Add this to the public section of the ArchStimV3 class
+    void setAllCurrents(int microAmps); // Sets current for all channels (-2000 to 2000 µA)
 
     double getMilliVolts(uint8_t channel);
     void setVoltage(float voltage);
     uint16_t getRawADC(uint8_t channel);
 
 private:
-    ADS1118 adc;
-    AD57X4R dac;
     float Z; // Head impedance or similar variable, initialized in functions as needed
 
     Waveform *activeWaveform; // Pointer to currently active waveform
+
+    // BLE members
+    BLEServer *pServer;
+    BLECharacteristic *pStatusCharacteristic;
+    BLECharacteristic *pCommandCharacteristic;
+    bool deviceConnected;
+    uint16_t mtuSize;
+
+    // Store command interpreter reference
+    CommandInterpreter *cmdInterpreter;
 };
 
 #endif

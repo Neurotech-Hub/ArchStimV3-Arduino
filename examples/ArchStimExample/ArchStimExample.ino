@@ -8,11 +8,9 @@ void setup()
 {
   Serial.begin(9600);
   stimDevice.begin();
-  stimDevice.enableStim();
   stimDevice.beginBLE(cmdInterpreter);
 
   delay(2000); // Serial connect
-  stimDevice.beep(1000, 200);
   Serial.println("Hello, ARCH Stim.");
   cmdInterpreter.printHelp();
 }

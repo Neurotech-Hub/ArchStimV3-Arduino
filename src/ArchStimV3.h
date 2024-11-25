@@ -110,6 +110,8 @@ public:
     void setVoltage(float voltage);
     uint16_t getRawADC(uint8_t channel);
 
+    void handleUserButton(); // Called from ISR to handle button press
+
 private:
     float Z; // Head impedance or similar variable, initialized in functions as needed
 
@@ -124,6 +126,16 @@ private:
 
     // Store command interpreter reference
     CommandInterpreter *cmdInterpreter;
+
+    // Button debounce variables
+    static volatile unsigned long lastDebounceTime;
+    static constexpr unsigned long debounceDelay = 250; // 250ms debounce time
+
+    // Static method for ISR
+    static void IRAM_ATTR userButtonISR();
+
+    // Reference to instance for ISR
+    static ArchStimV3 *instance;
 };
 
 #endif

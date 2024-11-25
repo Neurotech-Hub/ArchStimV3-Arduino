@@ -65,12 +65,14 @@ public:
         }
         else if (type == "EN")
         {
+            device.activateIsolated();
             device.enableStim();
             return true;
         }
         else if (type == "DIS")
         {
             device.disableStim();
+            device.deactivateIsolated();
             return true;
         }
         else if (type == "BEP")

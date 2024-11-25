@@ -4,68 +4,43 @@
 #include "esp_bt.h"
 #include "esp_mac.h"
 
-// BLE Server Callbacks
-class MyServerCallbacks : public BLEServerCallbacks
+// Initialize static members
+volatile unsigned long ArchStimV3::lastDebounceTime = 0;
+ArchStimV3 *ArchStimV3::instance = nullptr;
+
+ArchStimV3::ArchStimV3() : adc(ADC_CS), dac(DAC_CS, VREF), activeWaveform(nullptr)
 {
-private:
-    ArchStimV3 &device;
-
-public:
-    MyServerCallbacks(ArchStimV3 &dev) : device(dev) {}
-
-    void onConnect(BLEServer *pServer)
-    {
-        device.deviceConnected = true;
-        BLEDevice::setMTU(device.NEGOTIATE_MTU_SIZE);
-        device.mtuSize = BLEDevice::getMTU() - device.MTU_HEADER_SIZE;
-    }
-
-    void onDisconnect(BLEServer *pServer)
-    {
-        device.deviceConnected = false;
-    }
-};
-
-// Command Characteristic Callbacks
-class CommandCallbacks : public BLECharacteristicCallbacks
-{
-private:
-    CommandInterpreter &cmdInterpreter;
-
-public:
-    CommandCallbacks(CommandInterpreter &interpreter) : cmdInterpreter(interpreter) {}
-
-    void onWrite(BLECharacteristic *pCharacteristic)
-    {
-        String commands(pCharacteristic->getValue().c_str());
-        if (commands.length() > 0)
-        {
-            int startPos = 0;
-            int semicolonPos;
-
-            while ((semicolonPos = commands.indexOf(';', startPos)) != -1)
-            {
-                String cmd = commands.substring(startPos, semicolonPos);
-                cmd.trim();
-                cmdInterpreter.processCommand(cmd);
-                startPos = semicolonPos + 1;
-            }
-
-            if (startPos < commands.length())
-            {
-                String cmd = commands.substring(startPos);
-                cmd.trim();
-                cmdInterpreter.processCommand(cmd);
-            }
-        }
-    }
-};
-
-ArchStimV3::ArchStimV3() : adc(ADC_CS), dac(DAC_CS, VREF), activeWaveform(nullptr) {}
+    instance = this; // Store instance for ISR
+}
 
 void IRAM_ATTR smartIntISR()
 {
     digitalWrite(PS_HOLD, LOW);
+}
+
+void IRAM_ATTR ArchStimV3::userButtonISR()
+{
+    unsigned long currentTime = millis();
+    if (currentTime - lastDebounceTime > debounceDelay)
+    {
+        lastDebounceTime = currentTime;
+        if (instance)
+        {
+            instance->handleUserButton();
+        }
+    }
+}
+
+void ArchStimV3::handleUserButton()
+{
+    if (digitalRead(DRIVE_EN) == HIGH)
+    {
+        deactivateIsolated();
+    }
+    else
+    {
+        activateIsolated();
+    }
 }
 
 void ArchStimV3::begin()
@@ -73,6 +48,18 @@ void ArchStimV3::begin()
     initPins();
     initSPI();
     initI2C();
+
+    // Fun startup melody
+    beep(1047, 100); // C6
+    delay(50);
+    beep(1319, 100); // E6
+    delay(50);
+    beep(1568, 150); // G6
+    delay(100);
+    beep(2093, 200); // C7
+
+    disableStim();
+    setRedLED();
 }
 
 void ArchStimV3::initPins()
@@ -85,6 +72,7 @@ void ArchStimV3::initPins()
 
     pinMode(USB_SENSE, INPUT);
     pinMode(USER_IN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(USER_IN), userButtonISR, FALLING);
 
     pinMode(LED_R, OUTPUT);
     digitalWrite(LED_R, LOW);
@@ -573,56 +561,126 @@ uint16_t ArchStimV3::getRawADC(uint8_t channel)
         adsChannel = ADS1118::AIN_0; // Default to channel 0 if invalid input
     }
     return adc.getADCValue(adsChannel);
-    void ArchStimV3::beginBLE(CommandInterpreter & interpreter)
+}
+
+// BLE Server Callbacks
+class MyServerCallbacks : public BLEServerCallbacks
+{
+private:
+    ArchStimV3 &device;
+
+public:
+    MyServerCallbacks(ArchStimV3 &dev) : device(dev) {}
+
+    void onConnect(BLEServer *pServer)
     {
-        cmdInterpreter = &interpreter;
+        device.deviceConnected = true;
+        BLEDevice::setMTU(device.NEGOTIATE_MTU_SIZE);
+        device.mtuSize = BLEDevice::getMTU() - device.MTU_HEADER_SIZE;
 
-        // Initialize BLE
-        String deviceName = "ARCH_";
-        uint8_t mac[6];
-        esp_efuse_mac_get_default(mac);
-        char macStr[5];
-        snprintf(macStr, sizeof(macStr), "%02X%02X", mac[4], mac[5]);
-        deviceName += String(macStr);
-
-        BLEDevice::init(deviceName.c_str());
-        pServer = BLEDevice::createServer();
-        pServer->setCallbacks(new MyServerCallbacks(*this));
-
-        BLEService *pService = pServer->createService(SERVICE_UUID);
-
-        pStatusCharacteristic = pService->createCharacteristic(
-            STATUS_CHAR_UUID,
-            BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
-
-        pCommandCharacteristic = pService->createCharacteristic(
-            COMMAND_CHAR_UUID,
-            BLECharacteristic::PROPERTY_WRITE);
-        pCommandCharacteristic->setCallbacks(new CommandCallbacks(interpreter));
-
-        pService->start();
-        BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-        pAdvertising->addServiceUUID(SERVICE_UUID);
-        pAdvertising->setScanResponse(true);
-        pAdvertising->setMinPreferred(0x06);
-        pAdvertising->setMinPreferred(0x12);
-        BLEDevice::startAdvertising();
+        // Connection indication
+        digitalWrite(LED_B, HIGH);
+        device.beep(2093, 100); // High C (C7)
     }
 
-    void ArchStimV3::updateStatus(const char *status)
+    void onDisconnect(BLEServer *pServer)
     {
-        if (deviceConnected && pStatusCharacteristic != nullptr)
+        device.deviceConnected = false;
+
+        // Disconnection indication
+        digitalWrite(LED_B, LOW);
+        device.beep(1047, 100); // Low C (C6)
+
+        // Restart advertising
+        pServer->startAdvertising();
+    }
+};
+
+// Command Characteristic Callbacks
+class CommandCallbacks : public BLECharacteristicCallbacks
+{
+private:
+    CommandInterpreter &cmdInterpreter;
+
+public:
+    CommandCallbacks(CommandInterpreter &interpreter) : cmdInterpreter(interpreter) {}
+
+    void onWrite(BLECharacteristic *pCharacteristic)
+    {
+        String commands(pCharacteristic->getValue().c_str());
+        if (commands.length() > 0)
         {
-            pStatusCharacteristic->setValue(status);
-            pStatusCharacteristic->notify();
+            int startPos = 0;
+            int semicolonPos;
+
+            while ((semicolonPos = commands.indexOf(';', startPos)) != -1)
+            {
+                String cmd = commands.substring(startPos, semicolonPos);
+                cmd.trim();
+                cmdInterpreter.processCommand(cmd);
+                startPos = semicolonPos + 1;
+            }
+
+            if (startPos < commands.length())
+            {
+                String cmd = commands.substring(startPos);
+                cmd.trim();
+                cmdInterpreter.processCommand(cmd);
+            }
         }
     }
+};
 
-    void ArchStimV3::setAllCurrents(int microAmps)
+void ArchStimV3::beginBLE(CommandInterpreter &interpreter)
+{
+    cmdInterpreter = &interpreter;
+
+    // Initialize BLE
+    String deviceName = "ARCH_";
+    uint8_t mac[6];
+    esp_efuse_mac_get_default(mac);
+    char macStr[5];
+    snprintf(macStr, sizeof(macStr), "%02X%02X", mac[4], mac[5]);
+    deviceName += String(macStr);
+
+    BLEDevice::init(deviceName.c_str());
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks(*this));
+
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+
+    pStatusCharacteristic = pService->createCharacteristic(
+        STATUS_CHAR_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+
+    pCommandCharacteristic = pService->createCharacteristic(
+        COMMAND_CHAR_UUID,
+        BLECharacteristic::PROPERTY_WRITE);
+    pCommandCharacteristic->setCallbacks(new CommandCallbacks(interpreter));
+
+    pService->start();
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    pAdvertising->setMinPreferred(0x06);
+    pAdvertising->setMinPreferred(0x12);
+    BLEDevice::startAdvertising();
+}
+
+void ArchStimV3::updateStatus(const char *status)
+{
+    if (deviceConnected && pStatusCharacteristic != nullptr)
     {
-        // Clamp the input between -2000 and 2000 µA
-        microAmps = constrain(microAmps, -2000, 2000);
-
-        // Convert microamps to DAC value and set
-        dac.setAllVoltages(microAmps / 1000.0f); // TODO: Replace with direct current control
+        pStatusCharacteristic->setValue(status);
+        pStatusCharacteristic->notify();
     }
+}
+
+void ArchStimV3::setAllCurrents(int microAmps)
+{
+    // Clamp the input between -2000 and 2000 µA
+    microAmps = constrain(microAmps, -2000, 2000);
+
+    // Convert microamps to DAC value and set
+    dac.setAllVoltages(microAmps / 1000.0f); // TODO: Replace with direct current control
+}

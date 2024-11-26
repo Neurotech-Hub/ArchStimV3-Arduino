@@ -8,7 +8,7 @@
 #include "ADS1118.h"           // https://github.com/Neurotech-Hub/ADS1118-Arduino
 #include "AD57X4R.h"           // https://github.com/Neurotech-Hub/AD57X4R-Arduino
 #include "Adafruit_MAX1704X.h" // https://github.com/adafruit/Adafruit_MAX1704X
-#include <PCF85263A.h>         // https://github.com/teddokano/RTC_NXP_Arduino, depends I2C_device_Arduino
+#include <PCF85263A.h>         // https://github.com/teddokano/RTC_NXP_Arduino, depends: https://github.com/Neurotech-Hub/I2C_device_Arduino
 #include <time.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>

@@ -48,6 +48,7 @@ void ArchStimV3::begin()
     initPins();
     initSPI();
     initI2C();
+    initSD();
 
     // Fun startup melody
     beep(1047, 100); // C6
@@ -119,6 +120,14 @@ void ArchStimV3::initSPI()
 void ArchStimV3::initI2C()
 {
     Wire.begin(SDA_PIN, SCL_PIN);
+}
+
+void ArchStimV3::initSD()
+{
+    if (!SD.begin(SD_CS))
+    {
+        Serial.println("SD card initialization failed!");
+    }
 }
 
 void ArchStimV3::initADC()
@@ -499,17 +508,12 @@ void ArchStimV3::rampedSine(float rampFreq, float duration, float weight0, float
 }
 
 // Utility functions for impedance and current measurement
-float ArchStimV3::zCheck()
+void ArchStimV3::zCheck()
 {
     double mv = getMilliVolts(0);
     Serial.print("mV: ");
     Serial.println(mv);
-    return Z;
-}
-
-void ArchStimV3::printCurrent()
-{
-    // Implement current print logic
+    Z = mv; // Store in member variable instead of returning
 }
 
 double ArchStimV3::getMilliVolts(uint8_t channel)
@@ -607,6 +611,15 @@ public:
         digitalWrite(LED_B, LOW);
         device.beep(1047, 100); // Low C (C6)
 
+        if (!device.continueOnDisconnect)
+        {
+            device.setActiveWaveform(nullptr);
+            device.disableStim();
+            device.deactivateIsolated();
+        }
+
+        device.continueOnDisconnect = false; // Reset flag for next connection
+
         // Restart advertising
         pServer->startAdvertising();
     }
@@ -617,9 +630,11 @@ class CommandCallbacks : public BLECharacteristicCallbacks
 {
 private:
     CommandInterpreter &cmdInterpreter;
+    ArchStimV3 &device;
 
 public:
-    CommandCallbacks(CommandInterpreter &interpreter) : cmdInterpreter(interpreter) {}
+    CommandCallbacks(CommandInterpreter &interpreter, ArchStimV3 &dev)
+        : cmdInterpreter(interpreter), device(dev) {}
 
     void onWrite(BLECharacteristic *pCharacteristic)
     {
@@ -643,6 +658,8 @@ public:
                 cmd.trim();
                 cmdInterpreter.processCommand(cmd);
             }
+
+            device.updateStatus();
         }
     }
 };
@@ -672,7 +689,7 @@ void ArchStimV3::beginBLE(CommandInterpreter &interpreter)
     pCommandCharacteristic = pService->createCharacteristic(
         COMMAND_CHAR_UUID,
         BLECharacteristic::PROPERTY_WRITE);
-    pCommandCharacteristic->setCallbacks(new CommandCallbacks(interpreter));
+    pCommandCharacteristic->setCallbacks(new CommandCallbacks(interpreter, *this));
 
     pService->start();
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
@@ -683,11 +700,33 @@ void ArchStimV3::beginBLE(CommandInterpreter &interpreter)
     BLEDevice::startAdvertising();
 }
 
-void ArchStimV3::updateStatus(const char *status)
+void ArchStimV3::updateStatus()
 {
-    if (deviceConnected && pStatusCharacteristic != nullptr)
+    if (!pStatusCharacteristic)
     {
-        pStatusCharacteristic->setValue(status);
-        pStatusCharacteristic->notify();
+        return; // Only check if characteristic exists
     }
+
+    String status = "";
+
+    // Running status
+    status += "RUN:" + String(activeWaveform != nullptr ? 1 : 0) + ";";
+
+    // Battery level (placeholder)
+    status += "BAT:100;"; // Placeholder until battery monitoring is implemented
+
+    // Impedance
+    status += "Z:" + String(static_cast<int>(Z)) + ";";
+
+    // SD card status
+    status += "SD:" + String(SD.begin(SD_CS) ? 1 : 0) + ";";
+
+    // USB connection status
+    status += "USB:" + String(digitalRead(USB_SENSE) == HIGH ? 1 : 0) + ";";
+
+    // Settings sync status
+    status += "SYNC:1"; // Always synced for now
+
+    pStatusCharacteristic->setValue(status.c_str());
+    pStatusCharacteristic->notify();
 }

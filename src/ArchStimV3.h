@@ -65,11 +65,14 @@ public:
     float V_COMPN = 32.0;
     float V_COMPP = 32.0;
 
+    // public global variables
+    float Z;
     // Initialization methods
     void begin();
     void initPins();
     void initSPI();
     void initI2C();
+    void initSD();
     void initADC();
     void initDAC();
 
@@ -80,10 +83,6 @@ public:
     void sumOfSines(int stepSize, float weight0, float freq0, float weight1, float freq1, int duration);
     void rampedSine(float rampFreq, float duration, float weight0, float freq0, int stepSize);
 
-    // Utility functions
-    float zCheck();
-    void printCurrent();
-    void setCSDelay(uint16_t delay);
     // Waveform management
     void setActiveWaveform(Waveform *waveform); // Sets the current active waveform
     void runWaveform();                         // Executes the active waveform if set
@@ -95,10 +94,12 @@ public:
     void disableStim();
     void beep(int frequency, int duration);
     void setRedLED();
+    void zCheck(); // setter for Z
+    void setCSDelay(uint16_t delay);
 
     // BLE methods
     void beginBLE(CommandInterpreter &cmdInterpreter);
-    void updateStatus(const char *status);
+    void updateStatus();
     bool isConnected() const { return deviceConnected; }
     void setConnected(bool connected) { deviceConnected = connected; }
     void updateMTUSize(uint16_t newSize) { mtuSize = newSize; }
@@ -117,9 +118,10 @@ public:
 
     void handleUserButton(); // Called from ISR to handle button press
 
-private:
-    float Z; // Head impedance or similar variable, initialized in functions as needed
+    // BLE user settings
+    bool continueOnDisconnect = false;
 
+private:
     Waveform *activeWaveform; // Pointer to currently active waveform
 
     // BLE members

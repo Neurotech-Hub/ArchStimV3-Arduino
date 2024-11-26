@@ -25,6 +25,7 @@ public:
         Serial.println("  HELP          Show this help");
         Serial.println("  SETV:v        Set voltage (±4.096V)");
         Serial.println("  SETI:i        Set current in microamps (±2000µA)");
+        Serial.println("  CONT:b        Continue stimulation after disconnect (0=off,1=on)");
         Serial.println("\nWaveforms:");
         Serial.println("  SQR:n,p,f     Square (negV,posV,freq)");
         Serial.println("  PLS:a,b,c;t   Pulse (ampArray;timeArray)");
@@ -59,37 +60,41 @@ public:
         String type = (colonIndex == -1) ? command : command.substring(0, colonIndex);
         String params = (colonIndex == -1) ? "" : command.substring(colonIndex + 1);
 
-        // System commands
         if (type == "STP")
         {
             device.setActiveWaveform(nullptr);
+            Serial.println("Waveform stopped");
             return true;
         }
         else if (type == "EN")
         {
             device.activateIsolated();
             device.enableStim();
+            Serial.println("Stimulation enabled");
             return true;
         }
         else if (type == "DIS")
         {
             device.disableStim();
             device.deactivateIsolated();
+            Serial.println("Stimulation disabled");
             return true;
         }
         else if (type == "BEP")
             return processBEP(params);
         else if (type == "ZCK")
         {
-            float z = device.zCheck();
-            Serial.println(z);
+            device.zCheck();
+            Serial.print("Impedance: ");
+            Serial.println(static_cast<int>(device.Z));
             return true;
         }
         else if (type == "SETV")
             return processSETV(params);
         else if (type == "SETI")
             return processSETI(params);
-        // Waveform commands
+        else if (type == "CONT")
+            return processCONT(params);
         else if (type == "SQR")
             return processSQR(params);
         else if (type == "PLS")
@@ -181,12 +186,8 @@ private:
             Serial.println("ERR: BEP requires frequency,duration");
             return false;
         }
-        if (values[0] <= 0 || values[1] <= 0)
-        {
-            Serial.println("ERR: Invalid beep parameters");
-            return false;
-        }
         device.beep(values[0], values[1]);
+        Serial.println("Beep played");
         return true;
     }
 
@@ -207,6 +208,7 @@ private:
 
         device.setActiveWaveform(
             new SquareWave(device, values[0], values[1], values[2]));
+        Serial.println("Square wave started");
         return true;
     }
 
@@ -252,6 +254,7 @@ private:
 
         device.setActiveWaveform(
             new PulseWave(device, ampArray, timeArray, ampCount));
+        Serial.println("Pulse wave started");
         return true;
     }
 
@@ -272,6 +275,7 @@ private:
 
         device.setActiveWaveform(
             new RandomPulseWave(device, ampArray, count));
+        Serial.println("Random pulse wave started");
         return true;
     }
 
@@ -305,6 +309,7 @@ private:
 
         device.setActiveWaveform(
             new SumOfSinesWave(device, values[0], values[1], values[2], values[3], 1, values[4]));
+        Serial.println("Sum of sines wave started");
         return true;
     }
 
@@ -336,6 +341,7 @@ private:
 
         device.setActiveWaveform(
             new RampedSineWave(device, values[0], values[2], values[3], values[4], values[1]));
+        Serial.println("Ramped sine wave started");
         return true;
     }
 
@@ -354,6 +360,8 @@ private:
         }
 
         device.setVoltage(voltage);
+        Serial.print("Voltage set to: ");
+        Serial.println(voltage);
         return true;
     }
 
@@ -372,6 +380,29 @@ private:
         }
 
         device.setAllCurrents(microAmps);
+        Serial.print("Current set to: ");
+        Serial.println(microAmps);
+        return true;
+    }
+
+    bool processCONT(const String &params)
+    {
+        int value;
+        if (parseIntArray(params, &value, 1) != 1)
+        {
+            Serial.println("ERR: CONT requires boolean value (0 or 1)");
+            return false;
+        }
+
+        if (value != 0 && value != 1)
+        {
+            Serial.println("ERR: CONT value must be 0 or 1");
+            return false;
+        }
+
+        device.continueOnDisconnect = (value == 1);
+        Serial.print("Continue after disconnect: ");
+        Serial.println(value ? "ON" : "OFF");
         return true;
     }
 

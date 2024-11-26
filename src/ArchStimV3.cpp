@@ -49,6 +49,8 @@ void ArchStimV3::begin()
     initSPI();
     initI2C();
     initSD();
+    initBattery();
+    initRTC();
 
     // Fun startup melody
     beep(1047, 100); // C6
@@ -145,6 +147,65 @@ void ArchStimV3::initDAC()
     dac.setup(AD57X4R::AD5754R);
     dac.setAllOutputRanges(AD57X4R::BIPOLAR_5V);
     dac.setAllVoltages(0);
+}
+
+bool ArchStimV3::initBattery()
+{
+    if (!maxlipo.begin())
+    {
+        Serial.println("MAX17048 not found!");
+        return false;
+    }
+
+    Serial.println("MAX17048 found!");
+    return true;
+}
+
+void ArchStimV3::updateBatteryStatus()
+{
+    float voltage = maxlipo.cellVoltage();
+    if (!isnan(voltage))
+    {
+        batteryVoltage = voltage;
+        batteryPercent = maxlipo.cellPercent();
+    }
+    else
+    {
+        batteryVoltage = 0.0;
+        batteryPercent = 0.0;
+    }
+}
+
+bool ArchStimV3::initRTC()
+{
+    if (rtc.oscillator_stop())
+    {
+        Serial.println("RTC oscillator stopped - needs time set");
+        return false;
+    }
+    Serial.println("RTC initialized successfully");
+    return true;
+}
+
+void ArchStimV3::updateTime()
+{
+    time_t current_time = rtc.time(NULL);
+    Serial.print("Current time: ");
+    Serial.println(ctime(&current_time));
+}
+
+void ArchStimV3::setTime(int year, int month, int day, int hour, int minute, int second)
+{
+    struct tm timeinfo;
+    timeinfo.tm_year = year - 1900; // Years since 1900
+    timeinfo.tm_mon = month - 1;    // 0-11
+    timeinfo.tm_mday = day;         // 1-31
+    timeinfo.tm_hour = hour;        // 0-23
+    timeinfo.tm_min = minute;       // 0-59
+    timeinfo.tm_sec = second;       // 0-59
+
+    rtc.set(&timeinfo);
+    Serial.println("RTC time set successfully");
 }
 
 void ArchStimV3::activateIsolated()
@@ -704,16 +765,17 @@ void ArchStimV3::updateStatus()
 {
     if (!pStatusCharacteristic)
     {
-        return; // Only check if characteristic exists
+        return;
     }
 
-    String status = "";
+    // Update battery status before sending
+    updateBatteryStatus();
 
-    // Running status
+    String status = "";
     status += "RUN:" + String(activeWaveform != nullptr ? 1 : 0) + ";";
 
-    // Battery level (placeholder)
-    status += "BAT:100;"; // Placeholder until battery monitoring is implemented
+    // Use actual battery percentage
+    status += "BAT:" + String(static_cast<int>(batteryPercent)) + ";";
 
     // Impedance
     status += "Z:" + String(static_cast<int>(Z)) + ";";
@@ -726,6 +788,8 @@ void ArchStimV3::updateStatus()
 
     // Settings sync status
     status += "SYNC:1"; // Always synced for now
+
+    Serial.println(status);
 
     pStatusCharacteristic->setValue(status.c_str());
     pStatusCharacteristic->notify();

@@ -5,12 +5,15 @@
 #include <SD.h>
 #include <SPI.h>
 #include <Wire.h>
-#include "ADS1118.h"
-#include "AD57X4R.h"
-#include "Waveforms/Waveform.h" // Base waveform class
+#include "ADS1118.h"           // https://github.com/Neurotech-Hub/ADS1118-Arduino
+#include "AD57X4R.h"           // https://github.com/Neurotech-Hub/AD57X4R-Arduino
+#include "Adafruit_MAX1704X.h" // https://github.com/adafruit/Adafruit_MAX1704X
+#include <PCF85263A.h>         // https://github.com/teddokano/RTC_NXP_Arduino, depends I2C_device_Arduino
+#include <time.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
+#include "Waveforms/Waveform.h" // Base waveform class
 
 // Define pins and constants as needed
 #define USB_SENSE 1
@@ -121,6 +124,22 @@ public:
     // BLE user settings
     bool continueOnDisconnect = false;
 
+    // Battery monitoring variables
+    float batteryVoltage;
+    float batteryPercent;
+
+    // Battery monitoring methods
+    void updateBatteryStatus();
+    bool initBattery();
+
+    // RTC instance
+    PCF85263A rtc;
+
+    // RTC methods
+    bool initRTC();
+    void updateTime();
+    void setTime(int year, int month, int day, int hour, int minute, int second);
+
 private:
     Waveform *activeWaveform; // Pointer to currently active waveform
 
@@ -143,6 +162,8 @@ private:
 
     // Reference to instance for ISR
     static ArchStimV3 *instance;
+
+    Adafruit_MAX17048 maxlipo; // Add battery monitor instance
 };
 
 #endif

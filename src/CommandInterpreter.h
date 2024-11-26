@@ -26,6 +26,8 @@ public:
         Serial.println("  SETV:v        Set voltage (±4.096V)");
         Serial.println("  SETI:i        Set current in microamps (±2000µA)");
         Serial.println("  CONT:b        Continue stimulation after disconnect (0=off,1=on)");
+        Serial.println("  STAT          Show device status");
+        Serial.println("  TIME:y,m,d,h,m,s  Set RTC time (year,month,day,hour,min,sec)");
         Serial.println("\nWaveforms:");
         Serial.println("  SQR:n,p,f     Square (negV,posV,freq)");
         Serial.println("  PLS:a,b,c;t   Pulse (ampArray;timeArray)");
@@ -105,6 +107,35 @@ public:
             return processSOS(params);
         else if (type == "RMP")
             return processRMP(params);
+        else if (type == "STAT")
+        {
+            return true;
+        }
+        else if (type == "TIME")
+        {
+            int values[6]; // year, month, day, hour, minute, second
+            if (parseIntArray(params, values, 6) != 6)
+            {
+                Serial.println("ERR: TIME requires year,month,day,hour,minute,second");
+                return false;
+            }
+
+            // Basic validation
+            if (values[0] < 2000 || values[0] > 2099 || // year
+                values[1] < 1 || values[1] > 12 ||      // month
+                values[2] < 1 || values[2] > 31 ||      // day
+                values[3] < 0 || values[3] > 23 ||      // hour
+                values[4] < 0 || values[4] > 59 ||      // minute
+                values[5] < 0 || values[5] > 59)        // second
+            {
+                Serial.println("ERR: Invalid time values");
+                return false;
+            }
+
+            device.setTime(values[0], values[1], values[2], values[3], values[4], values[5]);
+            device.updateTime(); // Show the current time after setting
+            return true;
+        }
         else
         {
             Serial.println("ERR: Unknown command type");
@@ -401,7 +432,7 @@ private:
         }
 
         device.continueOnDisconnect = (value == 1);
-        Serial.print("Continue after disconnect: ");
+        Serial.print("after disconnect: ");
         Serial.println(value ? "ON" : "OFF");
         return true;
     }

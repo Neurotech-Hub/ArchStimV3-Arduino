@@ -43,6 +43,7 @@ static constexpr double VREF = 2.048;
 const int DAC_MIN = -32768;
 const int DAC_MAX = 32767;
 const int MAX_CURRENT = 2000;
+const int Z_SWEEP[4] = {-500, -250, 250, 500};
 
 // BLE configuration
 #define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
@@ -97,7 +98,6 @@ public:
     void disableStim();
     void beep(int frequency, int duration);
     void setRedLED();
-    void zCheck(); // setter for Z
     void setCSDelay(uint16_t delay);
 
     // BLE methods
@@ -139,6 +139,14 @@ public:
     bool initRTC();
     void updateTime();
     void setTime(int year, int month, int day, int hour, int minute, int second);
+
+    // impedance methods
+    void zCheck(int channel);
+    float getZ(int channel, int microAmps); // helper function to get impedance from current
+    void setZ(float setZ);                  // helper function to set impedance
+
+    // status methods
+    void printStatus();
 
 private:
     Waveform *activeWaveform; // Pointer to currently active waveform

@@ -137,16 +137,17 @@ void ArchStimV3::initADC()
     adc.begin();
     adc.setSamplingRate(ADS1118::RATE_128SPS);
     adc.setInputSelected(ADS1118::AIN_0);
-    adc.setFullScaleRange(ADS1118::FSR_4096);
+    adc.setFullScaleRange(ADS1118::FSR_2048);
     adc.setContinuousMode();
     adc.disablePullup();
+    getMilliVolts(0); // dummy read to clear buffer
 }
 
 void ArchStimV3::initDAC()
 {
     dac.setup(AD57X4R::AD5754R);
     dac.setAllOutputRanges(AD57X4R::BIPOLAR_5V);
-    dac.setAllVoltages(0);
+    setAllCurrents(0);
 }
 
 bool ArchStimV3::initBattery()
@@ -211,14 +212,15 @@ void ArchStimV3::setTime(int year, int month, int day, int hour, int minute, int
 void ArchStimV3::activateIsolated()
 {
     digitalWrite(DRIVE_EN, HIGH);
-    delay(500);
+    delay(200); // settle
+    initDAC();  // sets to 0
     initADC();
-    initDAC();
     setRedLED();
 }
 
 void ArchStimV3::deactivateIsolated()
 {
+    setAllCurrents(0);
     digitalWrite(DRIVE_EN, LOW);
     setRedLED();
 }
@@ -271,6 +273,270 @@ void ArchStimV3::setCSDelay(uint16_t delay)
     adc.csDelay = delay;
 }
 
+// helper function to get impedance from current
+float ArchStimV3::getZ(int channel, int microAmps)
+{
+    double ADC = getMilliVolts(channel);
+    float V = 0.0228 * ADC + -41.6177;
+    float Z = V / (microAmps * 1e-6); // convert to ohms
+
+    // Serial.printf("Z Calculation Debug:\n");
+    // Serial.printf("  Channel: %d\n", channel);
+    // Serial.printf("  Current: %d µA\n", microAmps);
+    // Serial.printf("  ADC Reading: %.2f mV\n", ADC);
+    // Serial.printf("  Calculated V: %.4f V\n", V);
+    // Serial.printf("  Calculated Z: %.2f Ω\n", Z);
+    // Serial.println();
+
+    return Z;
+}
+
+// helper function to set impedance
+void ArchStimV3::setZ(float setZ)
+{
+    Z = setZ;
+}
+
+// uses Z_SWEEP to calculate the average impedance
+void ArchStimV3::zCheck(int channel)
+{
+    Serial.printf("\n=== Starting Z Check on Channel %d ===\n", channel);
+    float zSum = 0;
+    for (int i = 0; i < sizeof(Z_SWEEP) / sizeof(Z_SWEEP[0]); i++)
+    {
+        int current = Z_SWEEP[i];
+        Serial.printf("Step %d: Setting current to %d µA\n", i + 1, current);
+        setAllCurrents(current);
+        delay(50);
+
+        float impedance = getZ(channel, current);
+        zSum += impedance;
+        Serial.printf("  Measured Z: %.2f Ω\n", impedance);
+    }
+    setAllCurrents(0);
+    float avgZ = zSum / (sizeof(Z_SWEEP) / sizeof(Z_SWEEP[0]));
+    setZ(avgZ);
+    Serial.printf("=== Z Check Complete: Average Z = %.2f Ω ===\n\n", avgZ);
+}
+
+double ArchStimV3::getMilliVolts(uint8_t channel)
+{
+    // Map channel 0-3 to ADS1118 single-ended inputs
+    uint8_t adsChannel;
+    switch (channel)
+    {
+    case 0:
+        adsChannel = ADS1118::AIN_0;
+        break;
+    case 1:
+        adsChannel = ADS1118::AIN_1;
+        break;
+    case 2:
+        adsChannel = ADS1118::AIN_2;
+        break;
+    case 3:
+        adsChannel = ADS1118::AIN_3;
+        break;
+    default:
+        adsChannel = ADS1118::AIN_0; // Default to channel 0 if invalid input
+    }
+    return adc.getMilliVolts(adsChannel);
+}
+
+void ArchStimV3::setVoltage(float voltage)
+{
+    dac.setAllVoltages(voltage);
+}
+
+uint16_t ArchStimV3::getRawADC(uint8_t channel)
+{
+    // Map channel 0-3 to ADS1118 single-ended inputs
+    uint8_t adsChannel;
+    switch (channel)
+    {
+    case 0:
+        adsChannel = ADS1118::AIN_0;
+        break;
+    case 1:
+        adsChannel = ADS1118::AIN_1;
+        break;
+    case 2:
+        adsChannel = ADS1118::AIN_2;
+        break;
+    case 3:
+        adsChannel = ADS1118::AIN_3;
+        break;
+    default:
+        adsChannel = ADS1118::AIN_0; // Default to channel 0 if invalid input
+    }
+    return adc.getADCValue(adsChannel);
+}
+
+// Transfer Function (V as a function of uA): -1.115e-03*uA + -2.189e-05
+// see: /Users/gaidica/Documents/MATLAB/Ching Lab/ARCHv3_IV.m
+void ArchStimV3::setAllCurrents(int microAmps)
+{
+    // Clamp the input between -2000 and 2000 µA
+    microAmps = constrain(microAmps, -MAX_CURRENT, MAX_CURRENT);
+
+    // Convert microamps to voltage using transfer function
+    float voltage = -1.115e-03f * microAmps + -2.189e-05f;
+
+    // Set DAC output
+    dac.setAllVoltages(voltage);
+}
+
+// BLE Server Callbacks
+class MyServerCallbacks : public BLEServerCallbacks
+{
+private:
+    ArchStimV3 &device;
+
+public:
+    MyServerCallbacks(ArchStimV3 &dev) : device(dev) {}
+
+    void onConnect(BLEServer *pServer)
+    {
+        device.deviceConnected = true;
+        BLEDevice::setMTU(device.NEGOTIATE_MTU_SIZE);
+        device.mtuSize = BLEDevice::getMTU() - device.MTU_HEADER_SIZE;
+
+        // Connection indication
+        digitalWrite(LED_B, HIGH);
+        device.beep(2093, 100); // High C (C7)
+    }
+
+    void onDisconnect(BLEServer *pServer)
+    {
+        device.deviceConnected = false;
+
+        // Disconnection indication
+        digitalWrite(LED_B, LOW);
+        device.beep(1047, 100); // Low C (C6)
+
+        if (!device.continueOnDisconnect)
+        {
+            device.setActiveWaveform(nullptr);
+            device.disableStim();
+            device.deactivateIsolated();
+        }
+
+        device.continueOnDisconnect = false; // Reset flag for next connection
+
+        // Restart advertising
+        pServer->startAdvertising();
+    }
+};
+
+// Command Characteristic Callbacks
+class CommandCallbacks : public BLECharacteristicCallbacks
+{
+private:
+    CommandInterpreter &cmdInterpreter;
+    ArchStimV3 &device;
+
+public:
+    CommandCallbacks(CommandInterpreter &interpreter, ArchStimV3 &dev)
+        : cmdInterpreter(interpreter), device(dev) {}
+
+    void onWrite(BLECharacteristic *pCharacteristic)
+    {
+        String commands(pCharacteristic->getValue().c_str());
+        if (commands.length() > 0)
+        {
+            int startPos = 0;
+            int semicolonPos;
+
+            while ((semicolonPos = commands.indexOf(';', startPos)) != -1)
+            {
+                String cmd = commands.substring(startPos, semicolonPos);
+                cmd.trim();
+                cmdInterpreter.processCommand(cmd);
+                startPos = semicolonPos + 1;
+            }
+
+            if (startPos < commands.length())
+            {
+                String cmd = commands.substring(startPos);
+                cmd.trim();
+                cmdInterpreter.processCommand(cmd);
+            }
+
+            device.updateStatus();
+        }
+    }
+};
+
+void ArchStimV3::beginBLE(CommandInterpreter &interpreter)
+{
+    cmdInterpreter = &interpreter;
+
+    // Initialize BLE
+    String deviceName = "ARCH_";
+    uint8_t mac[6];
+    esp_efuse_mac_get_default(mac);
+    char macStr[5];
+    snprintf(macStr, sizeof(macStr), "%02X%02X", mac[4], mac[5]);
+    deviceName += String(macStr);
+
+    BLEDevice::init(deviceName.c_str());
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks(*this));
+
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+
+    pStatusCharacteristic = pService->createCharacteristic(
+        STATUS_CHAR_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+
+    pCommandCharacteristic = pService->createCharacteristic(
+        COMMAND_CHAR_UUID,
+        BLECharacteristic::PROPERTY_WRITE);
+    pCommandCharacteristic->setCallbacks(new CommandCallbacks(interpreter, *this));
+
+    pService->start();
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    pAdvertising->setMinPreferred(0x06);
+    pAdvertising->setMinPreferred(0x12);
+    BLEDevice::startAdvertising();
+}
+
+void ArchStimV3::updateStatus()
+{
+    if (!pStatusCharacteristic)
+    {
+        return;
+    }
+
+    // Update battery status before sending
+    updateBatteryStatus();
+
+    String status = "";
+    status += "RUN:" + String(activeWaveform != nullptr ? 1 : 0) + ";";
+
+    // Use actual battery percentage
+    status += "BAT:" + String(static_cast<int>(batteryPercent)) + ";";
+
+    // Impedance
+    status += "Z:" + String(static_cast<int>(Z)) + ";";
+
+    // SD card status
+    status += "SD:" + String(SD.begin(SD_CS) ? 1 : 0) + ";";
+
+    // USB connection status
+    status += "USB:" + String(digitalRead(USB_SENSE) == HIGH ? 1 : 0) + ";";
+
+    // Settings sync status
+    status += "SYNC:1"; // Always synced for now
+
+    Serial.println(status);
+
+    pStatusCharacteristic->setValue(status.c_str());
+    pStatusCharacteristic->notify();
+}
+
 // Runs the active waveform if one is set
 void ArchStimV3::runWaveform()
 {
@@ -280,22 +546,22 @@ void ArchStimV3::runWaveform()
     }
 }
 
-// Generates a square wave with specified negative and positive voltages at given frequency
-// @param negVal: negative voltage value (V)
-// @param posVal: positive voltage value (V)
+// Generates a square wave with specified negative and positive currents at given frequency
+// @param negVal: negative current value (µA)
+// @param posVal: positive current value (µA)
 // @param frequency: wave frequency (Hz)
-// Example: square(-2.0, 2.0, 10.0) // ±2V square wave at 10Hz
+// Example: square(-2000, 2000, 10.0) // ±2000µA square wave at 10Hz
 //
 // Square Wave Pattern:
 //
 // Time:      0ms    50ms   100ms  150ms  200ms
 //           |      |      |      |      |
-// Voltage:   2V     -2V    2V     -2V    2V
+// Current:   2000µA -2000µA 2000µA -2000µA 2000µA
 //           ┌──────┐      ┌──────┐      ┌────
 //           │      │      │      │      │
 //           │      │      │      │      │
 //           │      └──────┘      └──────┘
-//          -2V
+//          -2000µA
 //
 // Details:
 // Period:    100ms (10Hz)
@@ -520,11 +786,11 @@ void ArchStimV3::sumOfSines(int stepSize, float weight0, float freq0, float weig
 // Current:   2000µA Envelope of amplitude     2000µA
 //            ┌─┐                             ┌─┐
 //            │ │    Ramped Sine Wave         │ │
-//    1000µA ─┤ └──┐                       ┌──┘ ├─── 1000µA
+//    1000µA ─┤ └──┐                       ┌──┘ ├���── 1000µA
 //            │    │                       │    │
 //       0µA ─┼────┼───────────────────────┼────┼─── 0µA
 //            │    │                       │    │
-//   -1000µA ─┤ ┌──┘                       └──┐ ├─── -1000µA
+//   -1000µA ─┤ ┌──┘                       └── ├─── -1000µA
 //            │ │                             │ │
 //   -2000µA  └─┘                             └─┘    -2000µA
 //
@@ -568,229 +834,26 @@ void ArchStimV3::rampedSine(float rampFreq, float duration, float weight0, float
     }
 }
 
-// Utility functions for impedance and current measurement
-void ArchStimV3::zCheck()
+void ArchStimV3::printStatus()
 {
-    double mv = getMilliVolts(0);
-    Serial.print("mV: ");
-    Serial.println(mv);
-    Z = mv; // Store in member variable instead of returning
-}
+    updateBatteryStatus(); // Update battery status before printing
 
-double ArchStimV3::getMilliVolts(uint8_t channel)
-{
-    // Map channel 0-3 to ADS1118 single-ended inputs
-    uint8_t adsChannel;
-    switch (channel)
-    {
-    case 0:
-        adsChannel = ADS1118::AIN_0;
-        break;
-    case 1:
-        adsChannel = ADS1118::AIN_1;
-        break;
-    case 2:
-        adsChannel = ADS1118::AIN_2;
-        break;
-    case 3:
-        adsChannel = ADS1118::AIN_3;
-        break;
-    default:
-        adsChannel = ADS1118::AIN_0; // Default to channel 0 if invalid input
-    }
-    return adc.getMilliVolts(adsChannel);
-}
+    // Create a divider line
+    const char *divider = "----------------------------------------";
 
-void ArchStimV3::setVoltage(float voltage)
-{
-    dac.setAllVoltages(voltage);
-}
+    Serial.println(divider);
+    Serial.println("              ARCH DEVICE STATUS              ");
+    Serial.println(divider);
 
-uint16_t ArchStimV3::getRawADC(uint8_t channel)
-{
-    // Map channel 0-3 to ADS1118 single-ended inputs
-    uint8_t adsChannel;
-    switch (channel)
-    {
-    case 0:
-        adsChannel = ADS1118::AIN_0;
-        break;
-    case 1:
-        adsChannel = ADS1118::AIN_1;
-        break;
-    case 2:
-        adsChannel = ADS1118::AIN_2;
-        break;
-    case 3:
-        adsChannel = ADS1118::AIN_3;
-        break;
-    default:
-        adsChannel = ADS1118::AIN_0; // Default to channel 0 if invalid input
-    }
-    return adc.getADCValue(adsChannel);
-}
+    // Format each status line with consistent width
+    Serial.printf("│ Stimulation  │ %s\n", activeWaveform ? "RUNNING" : "STOPPED");
+    Serial.printf("│ Battery      │ %.1f%% (%.2fV)\n", batteryPercent, batteryVoltage);
+    Serial.printf("│ Impedance    │ %.0f Ω\n", Z);
+    Serial.printf("│ SD Card      │ %s\n", SD.begin(SD_CS) ? "CONNECTED" : "NOT FOUND");
+    Serial.printf("│ USB          │ %s\n", digitalRead(USB_SENSE) == HIGH ? "CONNECTED" : "DISCONNECTED");
+    Serial.printf("│ Drive        │ %s\n", digitalRead(DRIVE_EN) == HIGH ? "ENABLED" : "DISABLED");
+    Serial.printf("│ Stimulator   │ %s\n", digitalRead(DISABLE) == LOW ? "ENABLED" : "DISABLED");
 
-// Transfer Function (V as a function of uA): -1.115e-03*uA + -2.189e-05
-// see: /Users/gaidica/Documents/MATLAB/Ching Lab/ARCHv3_IV.m
-void ArchStimV3::setAllCurrents(int microAmps)
-{
-    // Clamp the input between -2000 and 2000 µA
-    microAmps = constrain(microAmps, -MAX_CURRENT, MAX_CURRENT);
-
-    // Convert microamps to voltage using transfer function
-    float voltage = -1.115e-03f * microAmps + -2.189e-05f;
-
-    // Set DAC output
-    dac.setAllVoltages(voltage);
-}
-
-// BLE Server Callbacks
-class MyServerCallbacks : public BLEServerCallbacks
-{
-private:
-    ArchStimV3 &device;
-
-public:
-    MyServerCallbacks(ArchStimV3 &dev) : device(dev) {}
-
-    void onConnect(BLEServer *pServer)
-    {
-        device.deviceConnected = true;
-        BLEDevice::setMTU(device.NEGOTIATE_MTU_SIZE);
-        device.mtuSize = BLEDevice::getMTU() - device.MTU_HEADER_SIZE;
-
-        // Connection indication
-        digitalWrite(LED_B, HIGH);
-        device.beep(2093, 100); // High C (C7)
-    }
-
-    void onDisconnect(BLEServer *pServer)
-    {
-        device.deviceConnected = false;
-
-        // Disconnection indication
-        digitalWrite(LED_B, LOW);
-        device.beep(1047, 100); // Low C (C6)
-
-        if (!device.continueOnDisconnect)
-        {
-            device.setActiveWaveform(nullptr);
-            device.disableStim();
-            device.deactivateIsolated();
-        }
-
-        device.continueOnDisconnect = false; // Reset flag for next connection
-
-        // Restart advertising
-        pServer->startAdvertising();
-    }
-};
-
-// Command Characteristic Callbacks
-class CommandCallbacks : public BLECharacteristicCallbacks
-{
-private:
-    CommandInterpreter &cmdInterpreter;
-    ArchStimV3 &device;
-
-public:
-    CommandCallbacks(CommandInterpreter &interpreter, ArchStimV3 &dev)
-        : cmdInterpreter(interpreter), device(dev) {}
-
-    void onWrite(BLECharacteristic *pCharacteristic)
-    {
-        String commands(pCharacteristic->getValue().c_str());
-        if (commands.length() > 0)
-        {
-            int startPos = 0;
-            int semicolonPos;
-
-            while ((semicolonPos = commands.indexOf(';', startPos)) != -1)
-            {
-                String cmd = commands.substring(startPos, semicolonPos);
-                cmd.trim();
-                cmdInterpreter.processCommand(cmd);
-                startPos = semicolonPos + 1;
-            }
-
-            if (startPos < commands.length())
-            {
-                String cmd = commands.substring(startPos);
-                cmd.trim();
-                cmdInterpreter.processCommand(cmd);
-            }
-
-            device.updateStatus();
-        }
-    }
-};
-
-void ArchStimV3::beginBLE(CommandInterpreter &interpreter)
-{
-    cmdInterpreter = &interpreter;
-
-    // Initialize BLE
-    String deviceName = "ARCH_";
-    uint8_t mac[6];
-    esp_efuse_mac_get_default(mac);
-    char macStr[5];
-    snprintf(macStr, sizeof(macStr), "%02X%02X", mac[4], mac[5]);
-    deviceName += String(macStr);
-
-    BLEDevice::init(deviceName.c_str());
-    pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new MyServerCallbacks(*this));
-
-    BLEService *pService = pServer->createService(SERVICE_UUID);
-
-    pStatusCharacteristic = pService->createCharacteristic(
-        STATUS_CHAR_UUID,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
-
-    pCommandCharacteristic = pService->createCharacteristic(
-        COMMAND_CHAR_UUID,
-        BLECharacteristic::PROPERTY_WRITE);
-    pCommandCharacteristic->setCallbacks(new CommandCallbacks(interpreter, *this));
-
-    pService->start();
-    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-    pAdvertising->addServiceUUID(SERVICE_UUID);
-    pAdvertising->setScanResponse(true);
-    pAdvertising->setMinPreferred(0x06);
-    pAdvertising->setMinPreferred(0x12);
-    BLEDevice::startAdvertising();
-}
-
-void ArchStimV3::updateStatus()
-{
-    if (!pStatusCharacteristic)
-    {
-        return;
-    }
-
-    // Update battery status before sending
-    updateBatteryStatus();
-
-    String status = "";
-    status += "RUN:" + String(activeWaveform != nullptr ? 1 : 0) + ";";
-
-    // Use actual battery percentage
-    status += "BAT:" + String(static_cast<int>(batteryPercent)) + ";";
-
-    // Impedance
-    status += "Z:" + String(static_cast<int>(Z)) + ";";
-
-    // SD card status
-    status += "SD:" + String(SD.begin(SD_CS) ? 1 : 0) + ";";
-
-    // USB connection status
-    status += "USB:" + String(digitalRead(USB_SENSE) == HIGH ? 1 : 0) + ";";
-
-    // Settings sync status
-    status += "SYNC:1"; // Always synced for now
-
-    Serial.println(status);
-
-    pStatusCharacteristic->setValue(status.c_str());
-    pStatusCharacteristic->notify();
+    Serial.println(divider);
+    Serial.println();
 }

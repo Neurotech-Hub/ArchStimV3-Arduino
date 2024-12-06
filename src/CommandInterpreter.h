@@ -20,25 +20,25 @@ public:
         Serial.println("  EN            Enable stimulation");
         Serial.println("  DIS           Disable stimulation");
         Serial.println("  STP           Stop waveform");
-        Serial.println("  BEP:f,d       Beep (freq,duration)");
-        Serial.println("  ZCK           Check impedance");
+        Serial.println("  BEP:f,d       Beep (freq in Hz, duration in ms)");
+        Serial.println("  ZCK:c         Check impedance (channel 0-3)");
         Serial.println("  HELP          Show this help");
         Serial.println("  SETV:v        Set voltage (±4.096V)");
-        Serial.println("  SETI:i        Set current in microamps (±2000µA)");
+        Serial.println("  SETI:i        Set current (±2000µA)");
         Serial.println("  CONT:b        Continue stimulation after disconnect (0=off,1=on)");
         Serial.println("  STAT          Show device status");
         Serial.println("  TIME:y,m,d,h,m,s  Set RTC time (year,month,day,hour,min,sec)");
         Serial.println("\nWaveforms:");
-        Serial.println("  SQR:n,p,f     Square (negV,posV,freq)");
-        Serial.println("  PLS:a,b,c;t   Pulse (ampArray;timeArray)");
-        Serial.println("  RND:a,b,c     Random (ampArray)");
-        Serial.println("  SOS:w0,f0,w1,f1,d  Sum of sines (weights,freqs,duration)");
-        Serial.println("  RMP:f,d,w,F,s   Ramped sine (rampFreq,dur,weight,freq,step)");
+        Serial.println("  SQR:n,p,f     Square (neg µA, pos µA, freq in Hz)");
+        Serial.println("  PLS:a,b,c;t   Pulse (amp array in µA; time array in ms)");
+        Serial.println("  RND:a,b,c     Random (amp array in µA)");
+        Serial.println("  SOS:w0,f0,w1,f1,d  Sum of sines (weights in µA, freqs in Hz, duration in s)");
+        Serial.println("  RMP:f,d,w,F,s   Ramped sine (rampFreq in Hz, dur in s, weight in µA, freq in Hz, step)");
         Serial.println("\nExamples:");
-        Serial.println("  SQR:-2.0,2.0,10    // 10Hz square wave, ±2V");
-        Serial.println("  PLS:0,2,-2;100,0   // Pulse train, fixed 100ms");
-        Serial.println("  PLS:0,2,-2;25,50   // Pulse train, varying times");
-        Serial.println("  RND:2,-2,1.5,-1.5  // Random pulses");
+        Serial.println("  SQR:-500,500,10    // 10Hz square wave, ±500µA");
+        Serial.println("  PLS:0,500,-500;100    // Pulse train, all steps 100ms");
+        Serial.println("  PLS:0,500,-500;25,50,200  // Pulse train, different times per step");
+        Serial.println("  RND:500,-500,250,-250  // Random pulses in µA");
         Serial.println("  BEP:1000,200       // 1kHz beep, 200ms\n");
     }
 
@@ -64,12 +64,14 @@ public:
 
         if (type == "STP")
         {
+            device.setAllCurrents(0);
             device.setActiveWaveform(nullptr);
             Serial.println("Waveform stopped");
             return true;
         }
         else if (type == "EN")
         {
+            device.disableStim(); // ensure stim is disabled
             device.activateIsolated();
             device.enableStim();
             Serial.println("Stimulation enabled");
@@ -86,9 +88,17 @@ public:
             return processBEP(params);
         else if (type == "ZCK")
         {
-            device.zCheck();
-            Serial.print("Impedance: ");
-            Serial.println(static_cast<int>(device.Z));
+            int channel = 0; // Default to channel 0
+            if (params.length() > 0)
+            {
+                channel = params.toInt();
+                if (channel < 0 || channel > 3)
+                {
+                    Serial.println("ERR: Channel must be 0-3");
+                    return false;
+                }
+            }
+            device.zCheck(channel);
             return true;
         }
         else if (type == "SETV")
@@ -109,6 +119,7 @@ public:
             return processRMP(params);
         else if (type == "STAT")
         {
+            device.printStatus();
             return true;
         }
         else if (type == "TIME")
@@ -231,7 +242,8 @@ private:
             return false;
         }
 
-        if (!validateVoltage(values[0]) || !validateVoltage(values[1]) ||
+        if (!validateCurrent(static_cast<int>(values[0])) ||
+            !validateCurrent(static_cast<int>(values[1])) ||
             !validateFrequency(values[2]))
         {
             return false;
@@ -265,14 +277,23 @@ private:
         int timeCount = parseIntArray(timeStr, timeArray, MAX_ARRAY_SIZE);
         if (timeCount != 1 && timeCount != ampCount)
         {
-            Serial.println("ERR: Invalid time array size");
+            Serial.println("ERR: Time array must be either single value or match amplitude array size");
             return false;
         }
 
-        // Validate all voltages
+        if (timeCount == 1)
+        {
+            int duration = timeArray[0];
+            for (int i = 1; i < ampCount; i++)
+            {
+                timeArray[i] = duration;
+            }
+        }
+
+        // Validate all currents (not voltages)
         for (int i = 0; i < ampCount; i++)
         {
-            if (!validateVoltage(ampArray[i]))
+            if (!validateCurrent(ampArray[i]))
                 return false;
         }
 
@@ -297,10 +318,10 @@ private:
         if (!validateArraySize(count))
             return false;
 
-        // Validate all voltages
+        // Validate all currents (not voltages)
         for (int i = 0; i < count; i++)
         {
-            if (!validateVoltage(ampArray[i]))
+            if (!validateCurrent(ampArray[i]))
                 return false;
         }
 
@@ -319,8 +340,9 @@ private:
             return false;
         }
 
-        // Validate weights (voltages)
-        if (!validateVoltage(values[0]) || !validateVoltage(values[2]))
+        // Validate weights (currents, not voltages)
+        if (!validateCurrent(static_cast<int>(values[0])) ||
+            !validateCurrent(static_cast<int>(values[2])))
         {
             return false;
         }
@@ -353,12 +375,12 @@ private:
             return false;
         }
 
-        // Validate frequency and weight
+        // Validate frequency and current (not voltage)
         if (!validateFrequency(values[0]) || !validateFrequency(values[3]))
         {
             return false;
         }
-        if (!validateVoltage(values[2]))
+        if (!validateCurrent(static_cast<int>(values[2])))
         {
             return false;
         }

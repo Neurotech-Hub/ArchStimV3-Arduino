@@ -44,9 +44,9 @@ SQR:-500,500,10;TSTIM:1000;START;
 
 ## Hardware
 
-![ArchStimV3 Functional Diagram](./images/ARCHStim_PatentDrawings.001.jpeg)
+![ArchStimV3 Functional Diagram](./Assets/Images/ARCHStim_PatentDrawings.001.jpeg)
 
-![ArchStimV3 IO](./images/ARCHStim_Pinout.jpg)
+![ArchStimV3 IO](./Assets/Images/ARCHStim_Pinout.jpg)
 
 ## Requirements
 

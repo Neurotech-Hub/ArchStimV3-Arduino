@@ -34,7 +34,7 @@ To run a waveform, follow these steps in order:
    START;
    ```
 
-For each new stimulation trial, repeat steps 2-3. The stimulator (EN;) only needs to be enabled once after startup.
+For each new stimulation trial, repeat steps 2-4. The stimulator (EN;) only needs to be enabled once after startup.
 
 You can run commands together, always `;` terminated. For example:
 

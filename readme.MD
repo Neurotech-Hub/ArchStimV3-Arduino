@@ -42,6 +42,10 @@ You can run commands together, always `;` terminated. For example:
 SQR:-500,500,10;TSTIM:1000;START;
 ```
 
+## Pinout
+
+![ArchStimV3 Pinout](./images/ARCHStim_Pinout.jpg)
+
 ## Requirements
 
 - **Arduino IDE** or compatible development environment

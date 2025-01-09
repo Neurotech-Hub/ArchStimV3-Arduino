@@ -13,60 +13,131 @@ class CommandInterpreter
 public:
     CommandInterpreter(ArchStimV3 &device) : device(device) {}
 
+    // New method to handle serial command processing
+    void readSerial()
+    {
+        if (Serial.available())
+        {
+            String commandString = Serial.readStringUntil('\n');
+            commandString.trim(); // Remove any whitespace including trailing newline
+
+            // Process multiple commands separated by semicolons
+            int startPos = 0;
+            int semicolonPos;
+            bool success = true;
+
+            while ((semicolonPos = commandString.indexOf(';', startPos)) != -1)
+            {
+                String command = commandString.substring(startPos, semicolonPos + 1); // Include semicolon
+                command.trim();
+
+                if (command.length() > 0) // Only process non-empty commands
+                {
+                    if (!processCommand(command))
+                    {
+                        success = false;
+                        Serial.println("Command failed: " + command);
+                        break; // Stop processing on first failure
+                    }
+                }
+
+                startPos = semicolonPos + 1;
+            }
+
+            // Check if there's remaining text without a semicolon
+            if (startPos < commandString.length())
+            {
+                Serial.println("ERR: Command missing semicolon terminator");
+                success = false;
+            }
+
+            if (!success)
+            {
+                Serial.println("One or more commands failed. Type HELP; for usage.");
+            }
+        }
+    }
+
     void printHelp()
     {
         Serial.println("\nARCH Stim Commands:");
         Serial.println("System:");
-        Serial.println("  EN            Enable stimulation");
-        Serial.println("  DIS           Disable stimulation");
-        Serial.println("  STP           Stop waveform");
-        Serial.println("  BEP:f,d       Beep (freq in Hz, duration in ms)");
-        Serial.println("  ZCK:c         Check impedance (channel 0-3)");
-        Serial.println("  HELP          Show this help");
-        Serial.println("  SETV:v        Set voltage (±4.096V)");
-        Serial.println("  SETI:i        Set current (±2000µA)");
-        Serial.println("  CONT:b        Continue stimulation after disconnect (0=off,1=on)");
-        Serial.println("  STAT          Show device status");
-        Serial.println("  TIME:y,m,d,h,m,s  Set RTC time (year,month,day,hour,min,sec)");
+        Serial.println("  EN;           Enable stimulation");
+        Serial.println("  DIS;          Disable stimulation");
+        Serial.println("  STOP;         Stop waveform");
+        Serial.println("  START;        Start configured waveform");
+        Serial.println("  TSTIM:t;      Set stimulation timeout (ms, 0=disabled)");
+        Serial.println("  BEP:f,d;      Beep (freq in Hz, duration in ms)");
+        Serial.println("  ZCK:c;        Check impedance (channel 0-3)");
+        Serial.println("  HELP;         Show this help");
+        Serial.println("  SETV:v;       Set voltage (±4.096V)");
+        Serial.println("  SETI:i;       Set current (±2000µA)");
+        Serial.println("  CONT:b;       Continue stim after wireless disconnect (0=off,1=on)");
+        Serial.println("  STAT;         Show device status");
+        Serial.println("  TIME:y,m,d,h,m,s;  Set RTC time (year,month,day,hour,min,sec)");
         Serial.println("\nWaveforms:");
-        Serial.println("  SQR:n,p,f     Square (neg µA, pos µA, freq in Hz)");
-        Serial.println("  PLS:a,b,c;t   Pulse (amp array in µA; time array in ms)");
-        Serial.println("  RND:a,b,c     Random (amp array in µA)");
-        Serial.println("  SOS:w0,f0,w1,f1,d  Sum of sines (weights in µA, freqs in Hz, duration in s)");
-        Serial.println("  RMP:f,d,w,F,s   Ramped sine (rampFreq in Hz, dur in s, weight in µA, freq in Hz, step)");
+        Serial.println("  SQR:n,p,f;    Square (neg µA, pos µA, freq in Hz)");
+        Serial.println("  PLS:a,b,c;t;  Pulse (amp array in µA; time array in ms)");
+        Serial.println("  RND:a,b,c;    Random (amp array in µA)");
+        Serial.println("  SOS:w0,f0,w1,f1,d;  Sum of sines (weights in µA, freqs in Hz, duration in s)");
+        Serial.println("  RMP:f,d,w,F,s;  Ramped sine (rampFreq in Hz, dur in s, weight in µA, freq in Hz, step)");
         Serial.println("\nExamples:");
-        Serial.println("  SQR:-500,500,10    // 10Hz square wave, ±500µA");
-        Serial.println("  PLS:0,500,-500;100    // Pulse train, all steps 100ms");
-        Serial.println("  PLS:0,500,-500;25,50,200  // Pulse train, different times per step");
-        Serial.println("  RND:500,-500,250,-250  // Random pulses in µA");
-        Serial.println("  BEP:1000,200       // 1kHz beep, 200ms\n");
+        Serial.println("  SQR:-500,500,10;    // Configure 10Hz square wave, ±500µA");
+        Serial.println("  START;              // Start the configured waveform");
+        Serial.println("  STOP;               // Stop the waveform");
+        Serial.println("  PLS:0,500,-500;100;    // Configure pulse train, all steps 100ms");
+        Serial.println("  PLS:0,500,-500;25,50,200;  // Configure pulse train, different times per step");
+        Serial.println("  RND:500,-500,250,-250;  // Configure random pulses in µA");
+        Serial.println("  BEP:1000,200;       // 1kHz beep, 200ms\n");
     }
 
     bool processCommand(const String &command)
     {
-        if (command == "HELP")
+        // Check if command ends with semicolon
+        if (!command.endsWith(";"))
+        {
+            Serial.println("ERR: Command must end with semicolon");
+            return false;
+        }
+
+        // Remove the trailing semicolon and trim
+        String cmd = command.substring(0, command.length() - 1);
+        cmd.trim();
+
+        if (cmd == "HELP")
         {
             printHelp();
             return true;
         }
 
         // Validate command format
-        if (command.length() == 0)
+        if (cmd.length() == 0)
         {
             Serial.println("ERR: Empty command");
             return false;
         }
 
         // Split command into type and parameters
-        int colonIndex = command.indexOf(':');
-        String type = (colonIndex == -1) ? command : command.substring(0, colonIndex);
-        String params = (colonIndex == -1) ? "" : command.substring(colonIndex + 1);
+        int colonIndex = cmd.indexOf(':');
+        String type = (colonIndex == -1) ? cmd : cmd.substring(0, colonIndex);
+        String params = (colonIndex == -1) ? "" : cmd.substring(colonIndex + 1);
 
-        if (type == "STP")
+        if (type == "STOP")
         {
             device.setAllCurrents(0);
             device.setActiveWaveform(nullptr);
             Serial.println("Waveform stopped");
+            return true;
+        }
+        else if (type == "START")
+        {
+            if (device.getConfiguredWaveform() == nullptr)
+            {
+                Serial.println("ERR: No waveform configured");
+                return false;
+            }
+            device.startConfiguredWaveform();
+            Serial.println("Waveform started");
             return true;
         }
         else if (type == "EN")
@@ -145,6 +216,27 @@ public:
 
             device.setTime(values[0], values[1], values[2], values[3], values[4], values[5]);
             device.updateTime(); // Show the current time after setting
+            return true;
+        }
+        else if (type == "TSTIM")
+        {
+            unsigned long timeout;
+            if (params.length() == 0)
+            {
+                Serial.println("ERR: TSTIM requires timeout value in milliseconds");
+                return false;
+            }
+
+            timeout = params.toInt();
+            device.setStimTimeout(timeout);
+            if (timeout > 0)
+            {
+                Serial.printf("Stimulation timeout set to %lu ms\n", timeout);
+            }
+            else
+            {
+                Serial.println("Stimulation timeout disabled");
+            }
             return true;
         }
         else
@@ -249,9 +341,9 @@ private:
             return false;
         }
 
-        device.setActiveWaveform(
+        device.setConfiguredWaveform(
             new SquareWave(device, values[0], values[1], values[2]));
-        Serial.println("Square wave started");
+        Serial.println("Square wave configured");
         return true;
     }
 
@@ -304,9 +396,9 @@ private:
                 return false;
         }
 
-        device.setActiveWaveform(
+        device.setConfiguredWaveform(
             new PulseWave(device, ampArray, timeArray, ampCount));
-        Serial.println("Pulse wave started");
+        Serial.println("Pulse wave configured");
         return true;
     }
 
@@ -325,9 +417,9 @@ private:
                 return false;
         }
 
-        device.setActiveWaveform(
+        device.setConfiguredWaveform(
             new RandomPulseWave(device, ampArray, count));
-        Serial.println("Random pulse wave started");
+        Serial.println("Random pulse wave configured");
         return true;
     }
 
@@ -360,9 +452,9 @@ private:
             return false;
         }
 
-        device.setActiveWaveform(
+        device.setConfiguredWaveform(
             new SumOfSinesWave(device, values[0], values[1], values[2], values[3], 1, values[4]));
-        Serial.println("Sum of sines wave started");
+        Serial.println("Sum of sines wave configured");
         return true;
     }
 
@@ -392,9 +484,9 @@ private:
             return false;
         }
 
-        device.setActiveWaveform(
+        device.setConfiguredWaveform(
             new RampedSineWave(device, values[0], values[2], values[3], values[4], values[1]));
-        Serial.println("Ramped sine wave started");
+        Serial.println("Ramped sine wave configured");
         return true;
     }
 

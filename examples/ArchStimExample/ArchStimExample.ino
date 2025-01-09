@@ -17,16 +17,6 @@ void setup()
 
 void loop()
 {
-  if (Serial.available())
-  {
-    String command = Serial.readStringUntil('\n');
-    command.trim();
-
-    if (!cmdInterpreter.processCommand(command))
-    {
-      Serial.println("Command failed. Type HELP for usage.");
-    }
-  }
-
+  cmdInterpreter.readSerial();
   stimDevice.runWaveform();
 }

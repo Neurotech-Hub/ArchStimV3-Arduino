@@ -258,16 +258,6 @@ void ArchStimV3::beep(int frequency, int duration)
     tone(BUZZ, frequency, duration);
 }
 
-// Sets a new active waveform, deleting any previous one
-void ArchStimV3::setActiveWaveform(Waveform *waveform)
-{
-    if (activeWaveform)
-    {
-        delete activeWaveform; // Clean up the existing waveform
-    }
-    activeWaveform = waveform; // Assign the new waveform
-}
-
 void ArchStimV3::setCSDelay(uint16_t delay)
 {
     adc.csDelay = delay;
@@ -280,13 +270,13 @@ float ArchStimV3::getZ(int channel, int microAmps)
     float V = 0.0228 * ADC + -41.6177;
     float Z = V / (microAmps * 1e-6); // convert to ohms
 
-    // Serial.printf("Z Calculation Debug:\n");
-    // Serial.printf("  Channel: %d\n", channel);
-    // Serial.printf("  Current: %d µA\n", microAmps);
-    // Serial.printf("  ADC Reading: %.2f mV\n", ADC);
-    // Serial.printf("  Calculated V: %.4f V\n", V);
-    // Serial.printf("  Calculated Z: %.2f Ω\n", Z);
-    // Serial.println();
+    Serial.printf("Z Calculation Debug:\n");
+    Serial.printf("  Channel: %d\n", channel);
+    Serial.printf("  Current: %d µA\n", microAmps);
+    Serial.printf("  ADC Reading: %.2f mV\n", ADC);
+    Serial.printf("  Calculated V: %.4f V\n", V);
+    Serial.printf("  Calculated Z: %.2f Ω\n", Z);
+    Serial.println();
 
     return Z;
 }
@@ -542,7 +532,23 @@ void ArchStimV3::runWaveform()
 {
     if (activeWaveform)
     {
-        activeWaveform->execute(); // Call the execute function of the active waveform
+        // Check timeout if enabled
+        if (stimTimeout > 0)
+        {
+            unsigned long currentTime = millis();
+            if (currentTime - stimStartTime >= stimTimeout)
+            {
+                // Stop the waveform
+                setAllCurrents(0);
+                delete activeWaveform;
+                activeWaveform = nullptr;
+                stimTimeout = 0; // Reset timeout
+                Serial.println("Stimulation stopped due to timeout");
+                return;
+            }
+        }
+
+        activeWaveform->execute();
     }
 }
 
@@ -572,15 +578,29 @@ void ArchStimV3::square(int negVal, int posVal, float frequency)
 {
     static bool highState = false;
     static unsigned long lastToggleTime = 0;
-    unsigned long interval = 1000000 / (2 * frequency); // Half-period in microseconds
+    static bool initialized = false;
+    static int savedNegVal = 0;
+    static int savedPosVal = 0;
+    static float savedFreq = 0;
 
+    // Reset state if parameters change
+    if (!initialized || savedNegVal != negVal || savedPosVal != posVal || savedFreq != frequency)
+    {
+        highState = false;
+        lastToggleTime = micros();
+        savedNegVal = negVal;
+        savedPosVal = posVal;
+        savedFreq = frequency;
+        initialized = true;
+    }
+
+    unsigned long interval = 1000000 / (2 * frequency); // Half-period in microseconds
     unsigned long currentTime = micros();
+
     if (currentTime - lastToggleTime >= interval)
     {
         lastToggleTime = currentTime;
         highState = !highState;
-
-        // Set DAC output based on state
         setAllCurrents(highState ? posVal : negVal);
     }
 }
@@ -836,13 +856,9 @@ void ArchStimV3::rampedSine(float rampFreq, float duration, float weight0, float
 
 void ArchStimV3::printStatus()
 {
-    updateBatteryStatus(); // Update battery status before printing
-
-    // Create a divider line
-    const char *divider = "----------------------------------------";
-
-    Serial.println(divider);
-    Serial.println("              ARCH DEVICE STATUS              ");
+    String divider = "├───────────────┼────────────────────────────────┤";
+    Serial.println("\n┌───────────────┬────────────────────────────────┐");
+    Serial.println("│ Parameter     │ Value                          │");
     Serial.println(divider);
 
     // Format each status line with consistent width

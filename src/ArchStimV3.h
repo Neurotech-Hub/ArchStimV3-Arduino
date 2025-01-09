@@ -88,8 +88,53 @@ public:
     void rampedSine(float rampFreq, float duration, float weight0, float freq0, int stepSize);
 
     // Waveform management
-    void setActiveWaveform(Waveform *waveform); // Sets the current active waveform
-    void runWaveform();                         // Executes the active waveform if set
+    void setConfiguredWaveform(Waveform *waveform)
+    {
+        if (configuredWaveform)
+        {
+            delete configuredWaveform;
+        }
+        configuredWaveform = waveform;
+    }
+
+    Waveform *getConfiguredWaveform()
+    {
+        return configuredWaveform;
+    }
+
+    void startConfiguredWaveform()
+    {
+        if (!configuredWaveform)
+        {
+            return;
+        }
+
+        if (activeWaveform)
+        {
+            delete activeWaveform;
+        }
+
+        // Simply move the pointer
+        activeWaveform = configuredWaveform;
+        configuredWaveform = nullptr;
+
+        // Reset timeout if it's enabled
+        if (stimTimeout > 0)
+        {
+            stimStartTime = millis();
+        }
+    }
+
+    void setActiveWaveform(Waveform *waveform)
+    {
+        if (activeWaveform)
+        {
+            delete activeWaveform;
+        }
+        activeWaveform = waveform;
+    }
+
+    void runWaveform();
 
     // getters and setters
     void activateIsolated();
@@ -148,8 +193,24 @@ public:
     // status methods
     void printStatus();
 
+    // Timeout control
+    void setStimTimeout(unsigned long timeout)
+    {
+        stimTimeout = timeout;
+        if (timeout > 0)
+        {
+            stimStartTime = millis();
+        }
+    }
+
+    unsigned long getStimTimeout() const
+    {
+        return stimTimeout;
+    }
+
 private:
-    Waveform *activeWaveform; // Pointer to currently active waveform
+    Waveform *configuredWaveform; // Stores the configured but not yet started waveform
+    Waveform *activeWaveform;     // Currently running waveform
 
     // BLE members
     BLEServer *pServer;
@@ -172,6 +233,9 @@ private:
     static ArchStimV3 *instance;
 
     Adafruit_MAX17048 maxlipo; // Add battery monitor instance
+
+    unsigned long stimTimeout = 0;   // Timeout in milliseconds (0 = disabled)
+    unsigned long stimStartTime = 0; // When the current stim started
 };
 
 #endif

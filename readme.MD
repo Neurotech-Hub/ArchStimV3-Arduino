@@ -36,6 +36,12 @@ To run a waveform, follow these steps in order:
 
 For each new stimulation trial, repeat steps 2-3. The stimulator (EN;) only needs to be enabled once after startup.
 
+You can run commands together, always `;` terminated. For example:
+
+```
+SQR:-500,500,10;TSTIM:1000;START;
+```
+
 ## Requirements
 
 - **Arduino IDE** or compatible development environment

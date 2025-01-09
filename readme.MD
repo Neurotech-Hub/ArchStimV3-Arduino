@@ -42,9 +42,11 @@ You can run commands together, always `;` terminated. For example:
 SQR:-500,500,10;TSTIM:1000;START;
 ```
 
-## Pinout
+## Hardware
 
-![ArchStimV3 Pinout](./images/ARCHStim_Pinout.jpg)
+![ArchStimV3 Functional Diagram](./images/ARCHStim_PatentDrawings.001.jpeg)
+
+![ArchStimV3 IO](./images/ARCHStim_Pinout.jpg)
 
 ## Requirements
 

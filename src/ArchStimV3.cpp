@@ -873,3 +873,38 @@ void ArchStimV3::printStatus()
     Serial.println(divider);
     Serial.println();
 }
+
+// Generates a pure sine wave with specified amplitude and frequency
+// @param amplitude: peak amplitude of the sine wave (µA)
+// @param frequency: wave frequency (Hz)
+// Example: sine(500, 10.0) // 500µA sine wave at 10Hz
+//
+// Sine Wave Pattern:
+//
+// Time:      0ms    25ms   50ms   75ms   100ms
+//            |      |      |      |      |
+// Current:   500µA                             500µA
+//            ┌──────────────────────────────┐
+//            │      Pure Sine Wave          │
+//            │                              │
+//       0µA ─┼──────────────────────────────┼─── 0µA
+//            │                              │
+//            │                              │
+//    -500µA  └──────────────────────────────┘    -500µA
+//
+// Details:
+// Period:    100ms (10Hz)
+// Phase:     Starts at 0
+// Range:     ±amplitude µA
+//
+void ArchStimV3::sine(int amplitude, float frequency)
+{
+    unsigned long currentTime = micros();
+    float t = currentTime / 1000000.0f; // Convert to seconds
+
+    // Calculate sine wave value (starts from 0 phase)
+    float value = amplitude * sin(2 * PI * frequency * t);
+
+    // Update the output
+    setAllCurrents(static_cast<int>(value));
+}

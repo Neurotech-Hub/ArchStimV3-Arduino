@@ -7,6 +7,7 @@
 #include "Waveforms/RandomPulseWave.h"
 #include "Waveforms/SumOfSinesWave.h"
 #include "Waveforms/RampedSineWave.h"
+#include "Waveforms/SineWave.h"
 
 class CommandInterpreter
 {
@@ -79,8 +80,9 @@ public:
         Serial.println("  SQR:n,p,f;    Square (neg µA, pos µA, freq in Hz)");
         Serial.println("  PLS:a,b,c;t;  Pulse (amp array in µA; time array in ms)");
         Serial.println("  RND:a,b,c;    Random (amp array in µA)");
-        Serial.println("  SOS:w0,f0,w1,f1,d;  Sum of sines (weights in µA, freqs in Hz, duration in s)");
-        Serial.println("  RMP:f,d,w,F,s;  Ramped sine (rampFreq in Hz, dur in s, weight in µA, freq in Hz, step)");
+        // Serial.println("  SOS:w0,f0,w1,f1,d;  Sum of sines (weights in µA, freqs in Hz, duration in s)");
+        // Serial.println("  RMP:f,d,w,F,s;  Ramped sine (rampFreq in Hz, dur in s, weight in µA, freq in Hz, step)");
+        Serial.println("  SIN:a,f;      Sine (amplitude in µA, frequency in Hz)");
         Serial.println("\nExamples:");
         Serial.println("  SQR:-500,500,10;    // Configure 10Hz square wave, ±500µA");
         Serial.println("  START;              // Start the configured waveform");
@@ -180,6 +182,8 @@ public:
             return processCONT(params);
         else if (type == "SQR")
             return processSQR(params);
+        else if (type == "SIN")
+            return processSIN(params);
         else if (type == "PLS")
             return processPLS(params);
         else if (type == "RND")
@@ -548,6 +552,27 @@ private:
         device.continueOnDisconnect = (value == 1);
         Serial.print("after disconnect: ");
         Serial.println(value ? "ON" : "OFF");
+        return true;
+    }
+
+    bool processSIN(const String &params)
+    {
+        float values[2];
+        if (parseFloatArray(params, values, 2) != 2)
+        {
+            Serial.println("ERR: SIN requires amplitude,frequency");
+            return false;
+        }
+
+        if (!validateCurrent(static_cast<int>(values[0])) ||
+            !validateFrequency(values[1]))
+        {
+            return false;
+        }
+
+        device.setConfiguredWaveform(
+            new SineWave(device, values[0], values[1]));
+        Serial.println("Sine wave configured");
         return true;
     }
 

@@ -10,6 +10,32 @@
 - **Isolated Component Control**: Functions for managing isolated hardware
 - **Hardware Integration**: ADC and DAC control with safety features
 
+## Command Sequence
+
+To run a waveform, follow these steps in order:
+
+1. **Enable the stimulator** (required once after startup):
+   ```
+   EN;
+   ```
+
+2. **Set a waveform** (example using square wave):
+   ```
+   SQR:-500,500,10;
+   ```
+
+3. **Set stimulation timeout** (optional):
+   ```
+   TSTIM:1000;  // 1000ms timeout, use 0 to run forever
+   ```
+
+4. **Start the waveform**:
+   ```
+   START;
+   ```
+
+For each new stimulation trial, repeat steps 2-3. The stimulator (EN;) only needs to be enabled once after startup.
+
 ## Requirements
 
 - **Arduino IDE** or compatible development environment

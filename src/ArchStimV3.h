@@ -82,6 +82,7 @@ public:
 
     // Waveform and pulse generation methods (called by specific waveform classes)
     void square(int negVal, int posVal, float frequency);
+    void sine(int amplitude, float frequency);
     void pulse(int ampArray[], int timeArray[], int arrSize);
     void randPulse(int ampArray[], int arrSize);
     void sumOfSines(int stepSize, float weight0, float freq0, float weight1, float freq1, int duration);

@@ -153,4 +153,12 @@ For specific implementations, see:
 
 ## License
 
-This library is provided under the MIT License. See `LICENSE` for details.
+Copyright © 2024 Neurotech Hub at Washington University in St. Louis, in collaboration with Ching & Braver Labs. All rights reserved.
+
+This software and associated documentation files (the "Software") are proprietary and confidential. No part of the Software, including source code, object code, and documentation, may be used, copied, modified, merged, published, distributed, sublicensed, and/or sold without explicit written permission from the Neurotech Hub at Washington University in St. Louis.
+
+Unauthorized copying, deployment, modification, or distribution of this Software, via any medium, is strictly prohibited.
+
+For licensing inquiries, please contact:
+Neurotech Hub
+Washington University in St. Louis.

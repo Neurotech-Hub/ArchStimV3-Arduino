@@ -7,7 +7,7 @@
 #include <Wire.h>
 #include "ADS1118.h"           // https://github.com/Neurotech-Hub/ADS1118-Arduino
 #include "AD57X4R.h"           // https://github.com/Neurotech-Hub/AD57X4R-Arduino
-#include "Adafruit_MAX1704X.h" // https://github.com/adafruit/Adafruit_MAX1704X
+#include "Adafruit_MAX1704X.h" // https://github.com/adafruit/Adafruit_MAX1704X also via Arduino Library Manager
 #include <PCF85263A.h>         // https://github.com/teddokano/RTC_NXP_Arduino, depends: https://github.com/Neurotech-Hub/I2C_device_Arduino
 #include <time.h>
 #include <BLEDevice.h>
@@ -119,6 +119,9 @@ public:
         activeWaveform = configuredWaveform;
         configuredWaveform = nullptr;
 
+        // Reset the waveform timing when starting
+        activeWaveform->reset();
+
         // Reset timeout if it's enabled
         if (stimTimeout > 0)
         {
@@ -209,9 +212,19 @@ public:
         return stimTimeout;
     }
 
+    // Waveform reset flag methods
+    void setWaveformResetNeeded() { waveformResetNeeded = true; }
+    bool isWaveformResetNeeded()
+    {
+        bool temp = waveformResetNeeded;
+        waveformResetNeeded = false;
+        return temp;
+    }
+
 private:
-    Waveform *configuredWaveform; // Stores the configured but not yet started waveform
-    Waveform *activeWaveform;     // Currently running waveform
+    Waveform *configuredWaveform;     // Stores the configured but not yet started waveform
+    Waveform *activeWaveform;         // Currently running waveform
+    bool waveformResetNeeded = false; // Flag to indicate timing reset is needed
 
     // BLE members
     BLEServer *pServer;

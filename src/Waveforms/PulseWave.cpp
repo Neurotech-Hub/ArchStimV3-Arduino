@@ -25,3 +25,9 @@ void PulseWave::execute()
 {
     device.pulse(ampArray, timeArray, arrSize);
 }
+
+void PulseWave::reset()
+{
+    // Signal device that waveform timing should be reset
+    device.setWaveformResetNeeded();
+}

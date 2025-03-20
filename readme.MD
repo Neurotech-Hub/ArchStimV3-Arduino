@@ -149,7 +149,19 @@ The command system operates through three distinct layers:
 
 The system is implemented in `src/CommandInterpreter.h` with supporting waveform classes in `src/Waveforms/`. Each waveform type inherits from a base class that defines common behaviors and interfaces.
 
-For specific implementations, see:
+## Re-programming
+
+Download [libraries.zip](./Assets/libraries.zip) and place them in your Arduino `libraries` folder. See [ArchStimV3.h](./src/ArchStimV3.h) for other dependents if you get compilation errors.
+
+1. Remove the protective front sheild's M2 screws.
+2. Locate the mini-DIP jumper to the right of the SD card slot and temporarily remove it (or place it in the "prg" position).
+3. You should now be able to program the ESP32-S3 using the Arduino IDE.
+4. When complete, replace the jumper to the "btn" position.
+
+If the board type is not automatically selected, ensure you have the downlaoded the "esp32" board manager by Espressif and select the "ESP32S3 Dev Module".
+
+> [!NOTE]
+> The mini-DIP jumper enables the use of the press-and-hold power module. It turns out that making it place nice with re-programming is difficult, however, it does provide some protection against tampering. If you encounter issues connecting to the ESP32-S3, you may hold down the BOOT button, toggle the RESET button, and let go of the BOOT button to enter "boot mode".
 
 ## License
 

@@ -583,8 +583,8 @@ void ArchStimV3::square(int negVal, int posVal, float frequency)
     static int savedPosVal = 0;
     static float savedFreq = 0;
 
-    // Reset state if parameters change
-    if (!initialized || savedNegVal != negVal || savedPosVal != posVal || savedFreq != frequency)
+    // Reset state if reset is needed or if parameters change
+    if (isWaveformResetNeeded() || !initialized || savedNegVal != negVal || savedPosVal != posVal || savedFreq != frequency)
     {
         highState = false;
         lastToggleTime = micros();
@@ -641,6 +641,13 @@ void ArchStimV3::pulse(int ampArray[], int timeArray[], int arrSize)
     static int currentIndex = 0;
     static unsigned long lastTransitionTime = 0;
 
+    // Reset if needed
+    if (isWaveformResetNeeded())
+    {
+        currentIndex = 0;
+        lastTransitionTime = millis();
+    }
+
     unsigned long currentTime = millis();
 
     // Get the duration for the current index
@@ -691,6 +698,16 @@ void ArchStimV3::randPulse(int ampArray[], int arrSize)
     static unsigned long lastTransitionTime = 0;
     static unsigned long currentDuration = 1000;
     static int currentAmplitude = 0;
+
+    // Reset if needed
+    if (isWaveformResetNeeded())
+    {
+        inZeroState = true;
+        lastTransitionTime = millis();
+        currentDuration = 1000 + random(501);
+        currentAmplitude = 0;
+        setAllCurrents(0);
+    }
 
     unsigned long currentTime = millis();
 
@@ -765,6 +782,14 @@ void ArchStimV3::sumOfSines(int stepSize, float weight0, float freq0, float weig
 {
     static unsigned long startTime = millis();
     static unsigned long lastStepTime = 0;
+
+    // Reset if needed
+    if (isWaveformResetNeeded())
+    {
+        startTime = millis();
+        lastStepTime = 0;
+    }
+
     unsigned long currentTime = millis();
     unsigned long elapsedTime = currentTime - startTime;
 
@@ -806,7 +831,7 @@ void ArchStimV3::sumOfSines(int stepSize, float weight0, float freq0, float weig
 // Current:   2000µA Envelope of amplitude     2000µA
 //            ┌─┐                             ┌─┐
 //            │ │    Ramped Sine Wave         │ │
-//    1000µA ─┤ └──┐                       ┌──┘ ├���── 1000µA
+//    1000µA ─┤ └──┐                       ┌──┘ ├── 1000µA
 //            │    │                       │    │
 //       0µA ─┼────┼───────────────────────┼────┼─── 0µA
 //            │    │                       │    │
@@ -828,6 +853,14 @@ void ArchStimV3::rampedSine(float rampFreq, float duration, float weight0, float
 {
     static unsigned long startTime = millis();
     static unsigned long lastStepTime = 0;
+
+    // Reset if needed
+    if (isWaveformResetNeeded())
+    {
+        startTime = millis();
+        lastStepTime = 0;
+    }
+
     unsigned long currentTime = millis();
     unsigned long elapsedTime = currentTime - startTime;
 
@@ -899,8 +932,16 @@ void ArchStimV3::printStatus()
 //
 void ArchStimV3::sine(int amplitude, float frequency)
 {
+    static unsigned long sineStartTime = 0;
+
+    // Reset if needed
+    if (isWaveformResetNeeded())
+    {
+        sineStartTime = micros();
+    }
+
     unsigned long currentTime = micros();
-    float t = currentTime / 1000000.0f; // Convert to seconds
+    float t = (currentTime - sineStartTime) / 1000000.0f; // Convert to seconds, relative to start time
 
     // Calculate sine wave value (starts from 0 phase)
     float value = amplitude * sin(2 * PI * frequency * t);

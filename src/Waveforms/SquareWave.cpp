@@ -10,3 +10,9 @@ void SquareWave::execute()
     // Pass voltage values to device.square(), which handles conversion to microamps
     device.square(negVal, posVal, frequency);
 }
+
+void SquareWave::reset()
+{
+    // Signal device that waveform timing should be reset
+    device.setWaveformResetNeeded();
+}

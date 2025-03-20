@@ -13,5 +13,11 @@ SumOfSinesWave::SumOfSinesWave(ArchStimV3 &device, float weight0, float freq0, f
 
 void SumOfSinesWave::execute()
 {
-    device.sumOfSines(weight0, freq0, weight1, freq1, stepSize, duration);
+    device.sumOfSines(stepSize, weight0, freq0, weight1, freq1, duration);
+}
+
+void SumOfSinesWave::reset()
+{
+    // Signal device that waveform timing should be reset
+    device.setWaveformResetNeeded();
 }

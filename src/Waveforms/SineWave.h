@@ -10,6 +10,7 @@ class SineWave : public Waveform
 public:
     SineWave(ArchStimV3 &device, int amplitude, float frequency);
     void execute() override;
+    void reset() override; // Reset waveform timing
 
 private:
     ArchStimV3 &device;

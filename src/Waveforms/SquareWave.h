@@ -10,6 +10,7 @@ class SquareWave : public Waveform
 public:
     SquareWave(ArchStimV3 &device, int negVal, int posVal, float frequency);
     void execute() override;
+    void reset() override; // Reset waveform timing
 
 private:
     ArchStimV3 &device;

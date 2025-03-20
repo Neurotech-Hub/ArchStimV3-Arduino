@@ -10,6 +10,7 @@ public:
     PulseWave(ArchStimV3 &device, int *ampArray, int *timeArray, int arrSize);
     ~PulseWave();
     void execute() override;
+    void reset() override; // Reset waveform timing
 
 private:
     ArchStimV3 &device;

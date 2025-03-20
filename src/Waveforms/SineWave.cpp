@@ -8,3 +8,9 @@ void SineWave::execute()
 {
     device.sine(amplitude, frequency);
 }
+
+void SineWave::reset()
+{
+    // Signal device that waveform timing should be reset
+    device.setWaveformResetNeeded();
+}

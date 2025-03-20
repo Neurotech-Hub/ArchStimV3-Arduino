@@ -12,5 +12,11 @@ RampedSineWave::RampedSineWave(ArchStimV3 &device, float rampFreq, float weight0
 
 void RampedSineWave::execute()
 {
-    device.rampedSine(rampFreq, weight0, freq0, stepSize, duration);
+    device.rampedSine(rampFreq, duration, weight0, freq0, stepSize);
+}
+
+void RampedSineWave::reset()
+{
+    // Signal device that waveform timing should be reset
+    device.setWaveformResetNeeded();
 }

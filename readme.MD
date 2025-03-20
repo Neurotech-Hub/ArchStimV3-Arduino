@@ -151,11 +151,11 @@ The system is implemented in `src/CommandInterpreter.h` with supporting waveform
 
 ## Re-programming
 
-Download [libraries.zip](./Assets/libraries.zip) and place them in your Arduino `libraries` folder. See [ArchStimV3.h](./src/ArchStimV3.h) for other dependents if you get compilation errors.
+Download this library as well as [libraries.zip](./Assets/libraries.zip) and place them in your Arduino `libraries` folder. See [ArchStimV3.h](./src/ArchStimV3.h) for other dependents if you get compilation errors.
 
 1. Remove the protective front sheild's M2 screws.
 2. Locate the mini-DIP jumper to the right of the SD card slot and temporarily remove it (or place it in the "prg" position).
-3. You should now be able to program the ESP32-S3 using the Arduino IDE.
+3. You should now be able to program [ArchStimExample.ino](./examples/ArchStimExample/ArchStimExample.ino) to the ESP32-S3 using the Arduino IDE.
 4. When complete, replace the jumper to the "btn" position.
 
 If the board type is not automatically selected, ensure you have the downlaoded the "esp32" board manager by Espressif and select the "ESP32S3 Dev Module".
